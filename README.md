@@ -11,13 +11,12 @@ Klippverket lets users search KB's open cultural heritage data, place free-to-us
 - **Filter-motor på riktigt** (`src/lib/filters.ts`): Xerox/tröskel + Duoton/riso i canvas 2D.
 - **Live KB-sök + bildimport** via proxy så canvasen blir CORS-ren.
 - **PNG-export** som komponerar alla lager med riktiga filter och bäddar källhänvisning.
-- **Tillgänglighet:** tangentbordsstyrning på ytan, semantiska knappar, synligt fokus, `aria-live`-annonser, About-vy, `prefers-reduced-motion`.
-- **Deploy-redo:** serverless-funktioner (`api/kbsearch.ts`, `api/kbimg.ts`) för produktion.
+- **Tillgänglighet:** tangentbordsstyrning, semantiska knappar, synligt fokus, `aria-live`-annonser, About-vy, `prefers-reduced-motion`.
 
-Nästa (valfritt): drag-and-drop från hyllan, fler filter, spara/dela-länk, automatiska tester, Lighthouse/axe-rapport i README.
+Nästa (valfritt): drag-and-drop från hyllan, fler filter, spara/dela-länk, automatiska tester, axe/Lighthouse-rapport.
 
 ## Tangentbord
-Tab markerar ett objekt · piltangenter flyttar (Shift = fin) · `+`/`−` skalar · `Delete` tar bort.
+Tab markerar · piltangenter flyttar (Shift = fin) · `+`/`−` skalar · `Delete` tar bort.
 
 ## Stack
 React 19, TypeScript, Vite, Tailwind v4, TanStack Query, Zustand, canvas-baserade bildfilter.
@@ -29,18 +28,30 @@ React 19, TypeScript, Vite, Tailwind v4, TanStack Query, Zustand, canvas-baserad
 npm install
 npm run dev
 ```
-Sök t.ex. "Stockholm", klicka bilder, lägg till text, växla filter, exportera PNG.
 
-## Deploy (Vercel)
-Vercel upptäcker Vite automatiskt (`npm run build` → `dist`) och kör `api/*.ts` som serverless-funktioner.
+## Driftsättning (inte låst till en leverantör)
+Frontend är statiska filer (`dist`) och kan ligga var som helst. Det enda värdspecifika är två små proxy-funktioner (CORS-ren bild/sök mot KB). De finns färdiga för både Netlify och Vercel, med samma `/api/kbsearch` och `/api/kbimg`-paths, så appen behöver inte ändras.
+
+**Netlify**
+```bash
+npm i -g netlify-cli
+netlify deploy --build --prod
+```
+`netlify.toml` sätter build (`dist`) och funktionerna i `netlify/functions/` binder själva till `/api/...`.
+
+**Vercel**
 ```bash
 npm i -g vercel
-vercel        # följ promptarna; api/kbsearch + api/kbimg blir endpoints
+vercel
 ```
-I dev efterliknas samma endpoints av Vite-proxyn i `vite.config.ts`, så `/api/kbsearch` och `/api/kbimg` funkar både lokalt och i produktion.
+Vercel upptäcker Vite automatiskt och kör `api/*.ts` som serverless-funktioner.
+
+**Övrigt:** Cloudflare Pages fungerar också (statisk frontend + en liten Pages Function för proxyn). I dev efterliknas samma `/api`-endpoints av Vite-proxyn i `vite.config.ts`.
 
 ## Data & licens
-KB:s öppna sök-API (`data.kb.se`, kräver `Accept: application/json`). Importerar i första hand material som är fritt/public domain där KB:s metadata tillåter det, och bäddar källhänvisning i exporten. KB:s bilder hämtas via en liten server-proxy så de kan bearbetas säkert i canvas för filter och export.
+KB:s öppna sök-API (`data.kb.se`, kräver `Accept: application/json`). Importerar i första hand material som är fritt/public domain där KB:s metadata tillåter det, och bäddar källhänvisning i exporten.
+
+Koden är licensierad under **MIT** (se `LICENSE`). Kulturarvsmaterialet tillhör KB och dess leverantörer, och återanvänds enligt varje objekts rättighetsstatus.
 
 ## Tillgänglighet
 Tangentbordsnåbara kontroller, semantiska knappar, synligt fokus och skärmläsar-annonser för nyckelhandlingar. Full canvas-manipulation via tangentbord och en formell axe/Lighthouse-rapport är dokumenterade som nästa steg.
