@@ -2,6 +2,8 @@
 
 **A DIY zine workshop built with KB open cultural heritage data.**
 
+**Live demo:** https://klippverket.netlify.app/
+
 Klippverket lets users search KB's open cultural heritage data, place free-to-use archive images on an A5 artboard, apply xerox/riso-inspired filters, add text and export a zine-style PNG with source attribution. It connects my background in libraries and youth culture (LAVA), visual/music production and my current work as a frontend developer.
 
 > Pitch: **KB:s öppna kulturarv som kreativt råmaterial.**
