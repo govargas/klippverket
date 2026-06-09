@@ -50,9 +50,15 @@ function toImage(h: Hit): KbImage {
   }
 }
 
-export async function searchFreeImages(q: string, limit = 24): Promise<KbImage[]> {
+export type SearchOpts = { from?: string; to?: string; offset?: number }
+
+export async function searchFreeImages(q: string, limit = 24, opts: SearchOpts = {}): Promise<KbImage[]> {
   try {
-    const res = await fetch(`/api/kbsearch?q=${encodeURIComponent(q)}&limit=${limit}`, {
+    const params = new URLSearchParams({ q: q || '*', limit: String(limit) })
+    if (opts.from) params.set('from', opts.from)
+    if (opts.to) params.set('to', opts.to)
+    if (opts.offset) params.set('offset', String(opts.offset))
+    const res = await fetch(`/api/kbsearch?${params.toString()}`, {
       headers: { Accept: 'application/json' },
     })
     if (!res.ok) return []

@@ -1,13 +1,9 @@
-// Vercel serverless-funktion: proxar KB:s sök-API med rätt Accept-header.
+// Vercel serverless-funktion: proxar KB:s sök-API och skickar vidare alla parametrar.
 export default async function handler(req: any, res: any) {
-  const q = (req.query?.q ?? '') as string
-  const limit = (req.query?.limit ?? '24') as string
-  if (!q) { res.status(200).json({ hits: [] }); return }
+  const qs = (req.url || '').split('?')[1] || ''
+  if (!new URLSearchParams(qs).get('q')) { res.status(200).json({ hits: [] }); return }
   try {
-    const r = await fetch(
-      `https://data.kb.se/search/?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(limit)}`,
-      { headers: { Accept: 'application/json' } },
-    )
+    const r = await fetch('https://data.kb.se/search/?' + qs, { headers: { Accept: 'application/json' } })
     const data = await r.json()
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate')
     res.status(200).json(data)

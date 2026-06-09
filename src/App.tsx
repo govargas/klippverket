@@ -36,7 +36,10 @@ const uid = () => 'e' + ++counter
 const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
 const nextZ = (els: El[]) => (els.length ? Math.max(...els.map((e) => e.z)) + 1 : 1)
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-const EXAMPLES = ['Stockholm', 'Affisch', 'Karta', 'Porträtt', 'Kopparstick', 'Ornament']
+const THEMES = ['Porträtt', 'Affischer', 'Kartor', 'Kopparstick', 'Fartyg', 'Stockholm', 'Blommor', 'Ornament']
+const DECADES = [1600, 1700, 1800, 1850, 1880, 1900, 1920]
+const SURPRISE = ['Porträtt', 'Affischer', 'Kartor', 'Stockholm', 'Kunglig', 'Fågel', 'Stad', 'Fest', 'Kopparstick']
+const rnd = (n: number) => Math.floor(Math.random() * n)
 
 function filteredCanvas(el: ImgEl): HTMLCanvasElement {
   const cap = 700
@@ -123,12 +126,27 @@ export default function App() {
     return () => ro.disconnect()
   }, [])
 
-  const runSearch = async (q: string) => {
+  const runSearch = async (q: string, opts: { from?: string; to?: string; offset?: number } = {}, label?: string) => {
     setLoading(true)
-    try { const r = await searchFreeImages(q || 'Stockholm'); setResults(r); setSearched(true); say(r.length + ' träffar från KB') }
+    try { const r = await searchFreeImages(q || 'Stockholm', 24, opts); setResults(r); setSearched(true); say(label ?? (r.length + ' träffar från KB')) }
     finally { setLoading(false) }
   }
   useEffect(() => { void runSearch('Stockholm') }, [])
+
+  const surprise = async () => {
+    const term = SURPRISE[rnd(SURPRISE.length)]
+    setQuery(term)
+    setLoading(true)
+    try {
+      let r = await searchFreeImages(term, 24, { offset: rnd(60) })
+      if (r.length === 0) r = await searchFreeImages(term, 24)
+      setResults(r); setSearched(true); say('Överraskning: ' + term)
+    } finally { setLoading(false) }
+  }
+  const browseDecade = (start: number) => {
+    setQuery('')
+    void runSearch('*', { from: start + '-01-01', to: start + 9 + '-12-31', offset: rnd(40) }, 'Bläddrar ' + start + '-talet')
+  }
 
   const sel = elements.find((e) => e.id === selected) ?? null
 
@@ -241,10 +259,17 @@ export default function App() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Sök i KB:s fria material" placeholder="Sök i KB, t.ex. Stockholm, affisch, karta…" style={{ flex: 1, minWidth: 0, border: '2px solid ' + INK, background: '#fff', padding: '9px 10px', fontSize: 12 }} />
           <button type="submit" className="disp" style={{ background: INK, color: PAPER, border: '2px solid ' + INK, padding: '0 16px', fontSize: 14 }}>SÖK</button>
         </form>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <span className="mono" style={{ fontSize: 11, color: MUTED }}>Förslag:</span>
-          {EXAMPLES.map((t) => (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+          <button className="chip" onClick={() => void surprise()} style={{ background: ACID, borderColor: INK, fontWeight: 700 }}>Överraska mig</button>
+          <span className="mono" style={{ fontSize: 11, color: MUTED }}>Teman:</span>
+          {THEMES.map((t) => (
             <button key={t} className="chip" aria-label={'Sök ' + t} onClick={() => { setQuery(t); void runSearch(t) }}>{t}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <span className="mono" style={{ fontSize: 11, color: MUTED }}>Epok:</span>
+          {DECADES.map((d) => (
+            <button key={d} className="chip" aria-label={'Bläddra ' + d + '-talet'} onClick={() => browseDecade(d)}>{d}-tal</button>
           ))}
         </div>
         {loading && <div className="mono" style={{ fontSize: 11, color: MUTED }}>Hämtar från KB…</div>}
