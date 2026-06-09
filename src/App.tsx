@@ -100,6 +100,7 @@ export default function App() {
   const [query, setQuery] = useState('Stockholm')
   const [results, setResults] = useState<KbImage[]>([])
   const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
   const [announce, setAnnounce] = useState('')
   const [aboutOpen, setAboutOpen] = useState(false)
   const [frameW, setFrameW] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1024))
@@ -121,7 +122,7 @@ export default function App() {
 
   const runSearch = async (q: string) => {
     setLoading(true)
-    try { const r = await searchFreeImages(q || 'Stockholm'); setResults(r); say(r.length + ' träffar från KB') }
+    try { const r = await searchFreeImages(q || 'Stockholm'); setResults(r); setSearched(true); say(r.length + ' träffar från KB') }
     finally { setLoading(false) }
   }
   useEffect(() => { void runSearch('Stockholm') }, [])
@@ -245,7 +246,7 @@ export default function App() {
                 </span>
               </button>
             ))}
-            {results.length === 0 && <span className="mono" style={{ fontSize: 11, color: MUTED }}>Inga träffar (kör <code>npm run dev</code> så KB-proxyn är på).</span>}
+            {searched && results.length === 0 && <span className="mono" style={{ fontSize: 11, color: MUTED }}>Inga fria bilder för det ordet. KB:s öppna material är mest historiskt, prova t.ex. Stockholm, affisch, karta, porträtt eller kopparstick.</span>}
           </div>
         )}
       </section>
