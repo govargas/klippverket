@@ -43,10 +43,13 @@ const SURPRISE = ['Porträtt', 'Affischer', 'Kartor', 'Stockholm', 'Kunglig', 'F
 const rnd = (n: number) => Math.floor(Math.random() * n)
 
 function filteredCanvas(el: ImgEl): HTMLCanvasElement {
+  const iw = el.img.naturalWidth || el.img.width
+  const ih = el.img.naturalHeight || el.img.height
+  if (!iw || !ih) { const blank = document.createElement('canvas'); blank.width = 1; blank.height = 1; return blank }
   const cap = 700
-  const s = Math.min(1, cap / Math.max(el.img.width, el.img.height))
-  const w = Math.max(1, Math.round(el.img.width * s))
-  const h = Math.max(1, Math.round(el.img.height * s))
+  const s = Math.min(1, cap / Math.max(iw, ih))
+  const w = Math.max(1, Math.round(iw * s))
+  const h = Math.max(1, Math.round(ih * s))
   const c = document.createElement('canvas')
   c.width = w; c.height = h
   const ctx = c.getContext('2d')!
@@ -89,6 +92,42 @@ function renderPage(els: El[]): HTMLCanvasElement {
   return c
 }
 
+const STORE = 'klippverket:zines'
+type SavedZine = { id: string; name: string; savedAt: number; doc: string }
+function loadStore(): SavedZine[] { try { return JSON.parse(localStorage.getItem(STORE) || '[]') } catch { return [] } }
+function saveStore(list: SavedZine[]) { localStorage.setItem(STORE, JSON.stringify(list)) }
+function b64encode(str: string): string {
+  const bytes = new TextEncoder().encode(str)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin)
+}
+function b64decode(b64: string): string {
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new TextDecoder().decode(bytes)
+}
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => resolve(i); i.onerror = () => resolve(i); i.src = src })
+}
+function serialize(pages: Page[]): string {
+  return JSON.stringify({ v: 1, pages }, (k, v) => (k === 'img' ? undefined : v))
+}
+async function deserialize(json: string): Promise<Page[]> {
+  const doc = JSON.parse(json)
+  const pages: Page[] = []
+  for (const pg of doc.pages ?? []) {
+    const els: El[] = []
+    for (const e of pg.elements ?? []) {
+      if (e.kind === 'image') { const img = await loadImage(e.src.fullImage); els.push({ ...e, id: uid(), img }) }
+      else els.push({ ...e, id: uid() })
+    }
+    pages.push({ id: uid(), elements: els })
+  }
+  return pages
+}
+
 function ImageNode({ el }: { el: ImgEl }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
@@ -127,6 +166,53 @@ function About({ onClose }: { onClose: () => void }) {
   )
 }
 
+function MyZines({ pages, onLoad, onClose, say }: { pages: Page[]; onLoad: (p: Page[]) => void; onClose: () => void; say: (m: string) => void }) {
+  const [list, setList] = useState<SavedZine[]>(() => loadStore())
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => { closeRef.current?.focus() }, [])
+  const save = () => {
+    const name = (window.prompt('Namn på zinet?', 'Zine ' + (list.length + 1)) || '').trim()
+    if (!name) return
+    const next = [{ id: uid(), name, savedAt: Date.now(), doc: serialize(pages) }, ...list]
+    setList(next); saveStore(next); say('Sparade: ' + name)
+  }
+  const share = async () => {
+    const link = location.origin + location.pathname + '#z=' + encodeURIComponent(b64encode(serialize(pages)))
+    try { await navigator.clipboard.writeText(link); say('Delningslänk kopierad till urklipp') }
+    catch { location.hash = 'z=' + encodeURIComponent(b64encode(serialize(pages))); say('Länken ligger nu i adressfältet') }
+  }
+  const open = async (z: SavedZine) => { const pgs = await deserialize(z.doc); if (pgs.length) onLoad(pgs); onClose() }
+  const del = (id: string) => { const next = list.filter((z) => z.id !== id); setList(next); saveStore(next); say('Tog bort sparat zine') }
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Mina zines" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, border: '2px solid ' + INK, maxWidth: 520, width: '100%', maxHeight: '85vh', overflow: 'auto', padding: 24 }}>
+        <h2 className="disp" style={{ fontSize: 24, marginBottom: 10 }}>Mina zines</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+          <button className="chip" onClick={save}>Spara nuvarande</button>
+          <button className="chip" onClick={() => void share()}>Kopiera delningslänk</button>
+        </div>
+        {list.length === 0 && <p className="mono" style={{ fontSize: 12, color: MUTED }}>Inga sparade zines än. Allt sparas lokalt i din webbläsare.</p>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {list.map((z) => (
+            <div key={z.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1.5px solid ' + INK, padding: '8px 10px' }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="mono" style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{z.name}</div>
+                <div className="mono" style={{ fontSize: 10, color: MUTED }}>{new Date(z.savedAt).toLocaleString('sv-SE')}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+                <button className="chip" onClick={() => void open(z)}>Öppna</button>
+                <button className="chip" onClick={() => del(z.id)}>Ta bort</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button ref={closeRef} onClick={onClose} className="disp" style={{ marginTop: 18, background: INK, color: PAPER, border: 'none', padding: '10px 18px', fontSize: 15 }}>Stäng</button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [pages, setPages] = useState<Page[]>([{ id: uid(), elements: [] }])
   const [current, setCurrent] = useState(0)
@@ -139,6 +225,7 @@ export default function App() {
   const [searched, setSearched] = useState(false)
   const [announce, setAnnounce] = useState('')
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [zinesOpen, setZinesOpen] = useState(false)
   const [frameW, setFrameW] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1024))
   const drag = useRef<{ id: string; ox: number; oy: number; sx: number; sy: number } | null>(null)
   const mainRef = useRef<HTMLElement>(null)
@@ -162,6 +249,16 @@ export default function App() {
     finally { setLoading(false) }
   }
   useEffect(() => { void runSearch('Stockholm') }, [])
+
+  useEffect(() => {
+    if (location.hash.startsWith('#z=')) {
+      try {
+        const json = b64decode(decodeURIComponent(location.hash.slice(3)))
+        void deserialize(json).then((pgs) => { if (pgs.length) { setPages(pgs); setCurrent(0); setSelected(null); say('Öppnade delat zine') } })
+      } catch { /* ogiltig länk */ }
+      history.replaceState(null, '', location.pathname)
+    }
+  }, [])
 
   const surprise = async () => {
     const term = SURPRISE[rnd(SURPRISE.length)]
@@ -262,6 +359,7 @@ export default function App() {
     <div className="kv-shell" style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', border: '2px solid ' + INK }}>
       <p aria-live="polite" className="sr-only">{announce}</p>
       {aboutOpen && <About onClose={() => setAboutOpen(false)} />}
+      {zinesOpen && <MyZines pages={pages} onLoad={(p) => { setPages(p); setCurrent(0); setSelected(null) }} onClose={() => setZinesOpen(false)} say={say} />}
 
       <header style={{ background: INK, color: PAPER, padding: '14px 18px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -272,6 +370,7 @@ export default function App() {
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="tool" onClick={addText}>+ TEXT</button>
             <button className="tool" onClick={() => setAboutOpen(true)}>OM</button>
+            <button className="tool" onClick={() => setZinesOpen(true)}>ZINES</button>
             <button className="tool" onClick={exportPng}>PNG</button>
             <button onClick={() => void exportZinePdf()} className="disp" style={{ background: ACID, color: INK, border: '2px solid ' + INK, fontSize: 14, padding: '9px 14px' }}>ZINE PDF</button>
           </div>
