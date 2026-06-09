@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type KeyboardEvent } from 'react'
-import { threshold, duotone, hexToRgb, type FilterId } from './lib/filters'
+import { threshold, duotone, halftone, dither, grain, hexToRgb, type FilterId } from './lib/filters'
 import { searchFreeImages, type KbImage } from './lib/kb'
 
 const INK = '#141414'
@@ -12,9 +12,24 @@ const PAGE_H = 651
 const IMG_BASE = 200
 
 type Base = { id: string; x: number; y: number; scale: number; z: number }
-type ImgEl = Base & { kind: 'image'; src: KbImage; img: HTMLImageElement; filter: FilterId; level: number; shadow: string; highlight: string }
+type ImgEl = Base & {
+  kind: 'image'; src: KbImage; img: HTMLImageElement
+  filter: FilterId; level: number; shadow: string; highlight: string
+  cell: number; angle: number; levels: number; amount: number
+}
 type TextEl = Base & { kind: 'text'; text: string; size: number; color: string }
 type El = ImgEl | TextEl
+
+const FILTER_ORDER: FilterId[] = ['none', 'xerox', 'duotone', 'halftone', 'dither', 'grain']
+const FILTER_LABEL: Record<FilterId, string> = { none: 'INGEN', xerox: 'XEROX', duotone: 'DUOTON', halftone: 'RASTER', dither: 'DITHER', grain: 'KORN' }
+const FILTER_INFO: Record<FilterId, string> = {
+  none: 'Ingen effekt — originalbilden som den ligger i KB:s arkiv.',
+  xerox: 'Tröskel gör varje pixel antingen svart eller vit, helt utan gråskala. Precis så fungerade fotokopiatorn och tidiga faxar, och det blev fanzinekulturens hårda, korniga signatur.',
+  duotone: 'Duoton byter ut gråskalan mot två färger, en för skuggorna och en för högdagrarna. Det härmar risografen och tidigt screentryck, där varje färg trycktes som ett eget lager, ofta i grälla kombinationer.',
+  halftone: 'Rastret bygger upp bilden av prickar, stora där det är mörkt och små där det är ljust. Tekniken uppfanns på 1880-talet för att kunna trycka fotografier i tidningar. Håll en gammal tidningsbild nära ögat så ser du prickarna.',
+  dither: 'Dithering strör ut prickar i mönster och lurar ögat att se fler toner än det egentligen finns. Det användes flitigt på tidiga svartvita datorskärmar och i den tidiga webbens 256-färgsbilder.',
+  grain: 'Korn lägger på slumpmässigt brus, som filmkornet i analog film eller suset på en sliten kopia. Lite korn får en ren digital bild att kännas äldre, taktil och hemmagjord.',
+}
 
 let counter = 0
 const uid = () => 'e' + ++counter
@@ -31,8 +46,15 @@ function filteredCanvas(el: ImgEl): HTMLCanvasElement {
   c.width = w; c.height = h
   const ctx = c.getContext('2d')!
   ctx.drawImage(el.img, 0, 0, w, h)
-  if (el.filter === 'xerox') ctx.putImageData(threshold(ctx.getImageData(0, 0, w, h), el.level), 0, 0)
-  else if (el.filter === 'duotone') ctx.putImageData(duotone(ctx.getImageData(0, 0, w, h), hexToRgb(el.shadow), hexToRgb(el.highlight)), 0, 0)
+  if (el.filter === 'none') return c
+  const base = ctx.getImageData(0, 0, w, h)
+  let out: ImageData
+  if (el.filter === 'xerox') out = threshold(base, el.level)
+  else if (el.filter === 'duotone') out = duotone(base, hexToRgb(el.shadow), hexToRgb(el.highlight))
+  else if (el.filter === 'halftone') out = halftone(base, el.cell, el.angle)
+  else if (el.filter === 'dither') out = dither(base, el.levels)
+  else out = grain(base, el.amount)
+  ctx.putImageData(out, 0, 0)
   return c
 }
 
@@ -44,7 +66,7 @@ function ImageNode({ el }: { el: ImgEl }) {
     const fc = filteredCanvas(el)
     c.width = fc.width; c.height = fc.height
     c.getContext('2d')!.drawImage(fc, 0, 0)
-  }, [el.img, el.filter, el.level, el.shadow, el.highlight])
+  }, [el.img, el.filter, el.level, el.shadow, el.highlight, el.cell, el.angle, el.levels, el.amount])
   return <canvas ref={ref} aria-hidden="true" style={{ width: el.scale * IMG_BASE, height: 'auto', display: 'block', pointerEvents: 'none' }} />
 }
 
@@ -114,13 +136,14 @@ export default function App() {
   }, [selected, isRow])
 
   const update = (id: string, fn: (el: El) => El) => setElements((els) => els.map((e) => (e.id === id ? fn(e) : e)))
+  const updImg = (id: string, fn: (el: ImgEl) => ImgEl) => update(id, (e) => (e.kind === 'image' ? fn(e) : e))
 
   const addImage = (a: KbImage) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
       const id = uid()
-      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'xerox', level: 128, shadow: '#141414', highlight: '#ff4fa0' }])
+      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'xerox', level: 128, shadow: '#141414', highlight: '#ff4fa0', cell: 6, angle: 0, levels: 2, amount: 30 }])
       setSelected(id); say('Lade till bild: ' + a.title)
     }
     img.src = a.fullImage
@@ -132,7 +155,7 @@ export default function App() {
   }
   const remove = (id: string) => { setElements((els) => els.filter((e) => e.id !== id)); setSelected(null); say('Tog bort objekt') }
   const toFront = (id: string) => update(id, (e) => ({ ...e, z: nextZ(elements) }))
-  const setFilter = (id: string, f: FilterId) => { update(id, (e) => (e.kind === 'image' ? { ...e, filter: f } : e)); say('Filter: ' + (f === 'none' ? 'inget' : f)) }
+  const setFilter = (id: string, f: FilterId) => { updImg(id, (e) => ({ ...e, filter: f })); say('Filter: ' + FILTER_LABEL[f]) }
 
   const onElPointerDown = (e: PointerEvent<HTMLDivElement>, id: string) => {
     e.stopPropagation(); setSelected(id)
@@ -186,6 +209,7 @@ export default function App() {
   }
 
   const sorted = [...elements].sort((a, b) => a.z - b.z)
+  const labelStyle = { fontSize: 12 } as const
 
   return (
     <div className="kv-shell" style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', border: '2px solid ' + INK }}>
@@ -275,25 +299,47 @@ export default function App() {
                   <div>
                     <div className="mono" style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>FILTER</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {(['none', 'xerox', 'duotone'] as FilterId[]).map((f) => (
-                        <button key={f} className="chip" aria-pressed={sel.filter === f} onClick={() => setFilter(sel.id, f)}>
-                          {f === 'none' ? 'INGEN' : f === 'xerox' ? 'XEROX' : 'DUOTON'}
-                        </button>
+                      {FILTER_ORDER.map((f) => (
+                        <button key={f} className="chip" aria-pressed={sel.filter === f} onClick={() => setFilter(sel.id, f)}>{FILTER_LABEL[f]}</button>
                       ))}
                     </div>
                   </div>
+
                   {sel.filter === 'xerox' && (
-                    <label className="mono" style={{ fontSize: 12 }}>Tröskel: {sel.level}
-                      <input type="range" min={0} max={255} value={sel.level} onChange={(e) => { const v = Number(e.target.value); update(sel.id, (el) => (el.kind === 'image' ? { ...el, level: v } : el)) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
+                    <label className="mono" style={labelStyle}>Tröskel: {sel.level}
+                      <input type="range" min={0} max={255} value={sel.level} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, level: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
                     </label>
                   )}
                   {sel.filter === 'duotone' && (
                     <div style={{ display: 'flex', gap: 16 }}>
-                      <label className="mono" style={{ fontSize: 12 }}>Skugga<input type="color" value={sel.shadow} onChange={(e) => { const v = e.target.value; update(sel.id, (el) => (el.kind === 'image' ? { ...el, shadow: v } : el)) }} style={{ display: 'block', marginTop: 6 }} /></label>
-                      <label className="mono" style={{ fontSize: 12 }}>Högdager<input type="color" value={sel.highlight} onChange={(e) => { const v = e.target.value; update(sel.id, (el) => (el.kind === 'image' ? { ...el, highlight: v } : el)) }} style={{ display: 'block', marginTop: 6 }} /></label>
+                      <label className="mono" style={labelStyle}>Skugga<input type="color" value={sel.shadow} onChange={(e) => { const v = e.target.value; updImg(sel.id, (el) => ({ ...el, shadow: v })) }} style={{ display: 'block', marginTop: 6 }} /></label>
+                      <label className="mono" style={labelStyle}>Högdager<input type="color" value={sel.highlight} onChange={(e) => { const v = e.target.value; updImg(sel.id, (el) => ({ ...el, highlight: v })) }} style={{ display: 'block', marginTop: 6 }} /></label>
                     </div>
                   )}
-                  <label className="mono" style={{ fontSize: 12 }}>Storlek: {Math.round(sel.scale * 100)}%
+                  {sel.filter === 'halftone' && (
+                    <>
+                      <label className="mono" style={labelStyle}>Prickstorlek: {sel.cell}
+                        <input type="range" min={3} max={16} value={sel.cell} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, cell: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
+                      </label>
+                      <label className="mono" style={labelStyle}>Vinkel: {sel.angle}°
+                        <input type="range" min={0} max={90} value={sel.angle} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, angle: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
+                      </label>
+                    </>
+                  )}
+                  {sel.filter === 'dither' && (
+                    <label className="mono" style={labelStyle}>Nivåer: {sel.levels}
+                      <input type="range" min={2} max={6} value={sel.levels} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, levels: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
+                    </label>
+                  )}
+                  {sel.filter === 'grain' && (
+                    <label className="mono" style={labelStyle}>Mängd: {sel.amount}
+                      <input type="range" min={0} max={100} value={sel.amount} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, amount: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
+                    </label>
+                  )}
+
+                  <div className="mono" style={{ fontSize: 11, lineHeight: 1.6, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + ACID, padding: '9px 11px', color: INK }}>{FILTER_INFO[sel.filter]}</div>
+
+                  <label className="mono" style={labelStyle}>Storlek: {Math.round(sel.scale * 100)}%
                     <input type="range" min={0.2} max={2.5} step={0.05} value={sel.scale} onChange={(e) => { const v = Number(e.target.value); update(sel.id, (el) => ({ ...el, scale: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
                   </label>
                   <div className="mono" style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>{trunc(sel.src.title, 44)} · {sel.src.license ?? 'okänd licens'}</div>
@@ -301,13 +347,13 @@ export default function App() {
               )}
               {sel.kind === 'text' && (
                 <>
-                  <label className="mono" style={{ fontSize: 12 }}>Text
+                  <label className="mono" style={labelStyle}>Text
                     <input value={sel.text} onChange={(e) => { const v = e.target.value; update(sel.id, (el) => (el.kind === 'text' ? { ...el, text: v } : el)) }} style={{ width: '100%', display: 'block', marginTop: 6, border: '2px solid ' + INK, padding: '8px 8px', fontSize: 13 }} />
                   </label>
-                  <label className="mono" style={{ fontSize: 12 }}>Storlek: {sel.size}px
+                  <label className="mono" style={labelStyle}>Storlek: {sel.size}px
                     <input type="range" min={14} max={120} value={sel.size} onChange={(e) => { const v = Number(e.target.value); update(sel.id, (el) => (el.kind === 'text' ? { ...el, size: v } : el)) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
                   </label>
-                  <label className="mono" style={{ fontSize: 12 }}>Färg<input type="color" value={sel.color} onChange={(e) => { const v = e.target.value; update(sel.id, (el) => (el.kind === 'text' ? { ...el, color: v } : el)) }} style={{ display: 'block', marginTop: 6 }} /></label>
+                  <label className="mono" style={labelStyle}>Färg<input type="color" value={sel.color} onChange={(e) => { const v = e.target.value; update(sel.id, (el) => (el.kind === 'text' ? { ...el, color: v } : el)) }} style={{ display: 'block', marginTop: 6 }} /></label>
                 </>
               )}
             </div>
