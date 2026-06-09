@@ -21,7 +21,9 @@ Nästa (valfritt): drag-and-drop från hyllan, fler filter, spara/dela-länk, au
 Tab markerar · piltangenter flyttar (Shift = fin) · `+`/`−` skalar · `Delete` tar bort.
 
 ## Stack
-React 19, TypeScript, Vite, Tailwind v4, TanStack Query, Zustand, canvas-baserade bildfilter.
+React 19, TypeScript, Vite, Tailwind v4, egen canvas-baserad bildfiltermotor (`src/lib/filters.ts`), jsPDF (lazy-loaded för zine-export), två små serverless-proxyer mot KB.
+
+Tillståndet är medvetet lokalt (`useState`) — appen redigerar ett dokument i en vy, så en global store eller en server-cache-klient hade varit overengineering utan motsvarande nytta.
 
 > Byggd i React/TypeScript där jag är snabbast; lär mig aktivt SvelteKit för att matcha KB:s stack.
 
@@ -56,4 +58,6 @@ KB:s öppna sök-API (`data.kb.se`, kräver `Accept: application/json`). Importe
 Koden är licensierad under **MIT** (se `LICENSE`). Kulturarvsmaterialet tillhör KB och dess leverantörer, och återanvänds enligt varje objekts rättighetsstatus.
 
 ## Tillgänglighet
-Tangentbordsnåbara kontroller, semantiska knappar, synligt fokus och skärmläsar-annonser för nyckelhandlingar. Full canvas-manipulation via tangentbord och en formell axe/Lighthouse-rapport är dokumenterade som nästa steg.
+Tangentbords- och pekstyrd editor (pekarfångst så drag fungerar på touch), semantiska knappar, synligt fokus, landmärken och `aria-live`-annonser för nyckelhandlingar. Automatisk axe-core-granskning (4.10) ger **0 violations**, kontrast inkluderad.
+
+**Medveten begränsning:** själva bildkompositionen ritas i `<canvas>` och exponeras inte pixel för pixel för skärmläsare — varje objekt på ytan har istället en beskrivande etikett (titel/rubrik). Full skärmläsar-representation av kompositionen och en Lighthouse-rapport är nästa steg.

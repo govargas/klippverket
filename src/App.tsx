@@ -42,12 +42,18 @@ const DECADES = [1600, 1700, 1800, 1850, 1880, 1900, 1920]
 const SURPRISE = ['Porträtt', 'Affischer', 'Kartor', 'Stockholm', 'Kunglig', 'Fågel', 'Stad', 'Fest', 'Kopparstick']
 const rnd = (n: number) => Math.floor(Math.random() * n)
 
-function filteredCanvas(el: ImgEl): HTMLCanvasElement {
+// Full upplösning för export, lägre för live-förhandsvisning. Bilden visas
+// ändå bara ~200px på ytan, så att filtrera 700px vid varje slider-steg är
+// slöseri som fryser UI:t. Förhandsvisningen filtrerar färre pixlar.
+const EXPORT_CAP = 700
+const PREVIEW_CAP = 360
+
+function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
   const iw = el.img.naturalWidth || el.img.width
   const ih = el.img.naturalHeight || el.img.height
   if (!iw || !ih) { const blank = document.createElement('canvas'); blank.width = 1; blank.height = 1; return blank }
-  const cap = 700
-  const s = Math.min(1, cap / Math.max(iw, ih))
+  const maxDim = Math.max(iw, ih)
+  const s = Math.min(1, cap / maxDim)
   const w = Math.max(1, Math.round(iw * s))
   const h = Math.max(1, Math.round(ih * s))
   const c = document.createElement('canvas')
@@ -59,7 +65,12 @@ function filteredCanvas(el: ImgEl): HTMLCanvasElement {
   let out: ImageData
   if (el.filter === 'xerox') out = threshold(base, el.level)
   else if (el.filter === 'duotone') out = duotone(base, hexToRgb(el.shadow), hexToRgb(el.highlight))
-  else if (el.filter === 'halftone') out = halftone(base, el.cell, el.angle)
+  else if (el.filter === 'halftone') {
+    // Prickstorleken är i pixlar, så den måste skalas mot exportupplösningen,
+    // annars ser rastret olika ut i förhandsvisning och export.
+    const ratio = Math.min(maxDim, cap) / Math.min(maxDim, EXPORT_CAP)
+    out = halftone(base, Math.max(3, Math.round(el.cell * ratio)), el.angle)
+  }
   else if (el.filter === 'dither') out = dither(base, el.levels)
   else out = grain(base, el.amount)
   ctx.putImageData(out, 0, 0)
@@ -131,11 +142,16 @@ async function deserialize(json: string): Promise<Page[]> {
 function ImageNode({ el }: { el: ImgEl }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
-    const c = ref.current
-    if (!c) return
-    const fc = filteredCanvas(el)
-    c.width = fc.width; c.height = fc.height
-    c.getContext('2d')!.drawImage(fc, 0, 0)
+    // Koalescera till en omräkning per animationsruta: vid snabb slider-dragning
+    // hinner cleanup avbryta den väntande rutan, så bara senaste värdet renderas.
+    const raf = requestAnimationFrame(() => {
+      const c = ref.current
+      if (!c) return
+      const fc = filteredCanvas(el, PREVIEW_CAP)
+      c.width = fc.width; c.height = fc.height
+      c.getContext('2d')!.drawImage(fc, 0, 0)
+    })
+    return () => cancelAnimationFrame(raf)
   }, [el.img, el.filter, el.level, el.shadow, el.highlight, el.cell, el.angle, el.levels, el.amount])
   return <canvas ref={ref} aria-hidden="true" style={{ width: el.scale * IMG_BASE, height: 'auto', display: 'block', pointerEvents: 'none' }} />
 }
@@ -153,9 +169,9 @@ function About({ onClose }: { onClose: () => void }) {
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Vad är en zine?</h3>
         <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>En zine (kortform av magazine, ofta även "fanzine") är ett självgjort, småskaligt häfte: klippt, klistrat och kopierat för hand. Kulturen växte fram i punkens och science fiction-fandomens DIY-anda, ingen förläggare, inga regler, vem som helst kan göra en. Klippverket bygger på samma tanke men med kulturarvet som råmaterial. När gamla kartor, affischer och porträtt går att klippa om blir historien inte bara bevarad utan möjlig att leka med, remixa och göra till sin egen. Tillgängliggörande i praktiken, från arkivhylla till köksbord.</p>
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Teknik</h3>
-        <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>React, TypeScript, Vite. Egen bildfilter-motor i canvas 2D. KB:s öppna sök-API via en liten bild-/sök-proxy (serverless) så bilderna kan bearbetas i canvas. Byggd i React.</p>
+        <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>React, TypeScript, Vite. Egen bildfilter-motor i canvas 2D. KB:s öppna sök-API via en liten bild-/sök-proxy (serverless) så bilderna kan bearbetas i canvas.</p>
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Tillgänglighet</h3>
-        <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>Responsiv från 320 px, WCAG 2 AA i sikte: tangentbordsnåbara kontroller, semantiska knappar, synligt fokus och skärmläsar-annonser. På ytan: Tab markerar, piltangenter flyttar, +/− skalar, Delete tar bort.</p>
+        <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>Responsiv från 320 px. Tangentbords- och pekstyrd yta, semantiska knappar, synligt fokus och skärmläsar-annonser. Automatisk axe-granskning utan anmärkningar (inkl. kontrast). På ytan: Tab markerar, piltangenter flyttar, +/− skalar, Delete tar bort. Medveten begränsning: själva bildkompositionen ritas i canvas och exponeras inte pixel för pixel för skärmläsare — varje objekt har istället en beskrivande etikett.</p>
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Källa &amp; licens</h3>
         <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>Allt material kommer från KB Digitalt, Kungliga bibliotekets söktjänst för digitaliserat kulturarv: bilder, kartor, affischer, vykort, porträtt, handskrifter och mycket mer. Det mesta är fritt att använda eftersom upphovsrätten har upphört. Klippverket hämtar det via KB:s öppna sök-API (data.kb.se) och visar i första hand det som är fritt eller public domain där metadatan tillåter det. Materialet är kurerat och mest historiskt, så moderna ord ger ofta inga träffar, men det historiska djupet är också det som ger den råa, tidlösa känslan. Källan bäddas in i varje export.</p>
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Koncept och utveckling</h3>
@@ -222,6 +238,7 @@ export default function App() {
   const [query, setQuery] = useState('Stockholm')
   const [results, setResults] = useState<KbImage[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
   const [searched, setSearched] = useState(false)
   const [announce, setAnnounce] = useState('')
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -244,9 +261,16 @@ export default function App() {
   }, [])
 
   const runSearch = async (q: string, opts: { from?: string; to?: string; offset?: number } = {}, label?: string) => {
-    setLoading(true)
-    try { const r = await searchFreeImages(q || 'Stockholm', 24, opts); setResults(r); setSearched(true); say(label ?? (r.length + ' träffar från KB')) }
-    finally { setLoading(false) }
+    setLoading(true); setError(false)
+    try {
+      const { images, total } = await searchFreeImages(q || 'Stockholm', 24, opts)
+      setResults(images); setSearched(true)
+      say(label ?? (images.length
+        ? images.length + ' fria träffar från KB'
+        : total + ' träffar hos KB, men ingen fri att använda'))
+    } catch {
+      setError(true); setResults([]); setSearched(true); say('KB:s API svarar inte just nu')
+    } finally { setLoading(false) }
   }
   useEffect(() => { void runSearch('Stockholm') }, [])
 
@@ -263,11 +287,14 @@ export default function App() {
   const surprise = async () => {
     const term = SURPRISE[rnd(SURPRISE.length)]
     setQuery(term)
-    setLoading(true)
+    setLoading(true); setError(false)
     try {
       let r = await searchFreeImages(term, 24, { offset: rnd(60) })
-      if (r.length === 0) r = await searchFreeImages(term, 24)
-      setResults(r); setSearched(true); say('Överraskning: ' + term)
+      if (r.images.length === 0) r = await searchFreeImages(term, 24)
+      setResults(r.images); setSearched(true)
+      say(r.images.length ? 'Överraskning: ' + term : 'Inga fria träffar för ' + term + ', prova igen')
+    } catch {
+      setError(true); setResults([]); setSearched(true); say('KB:s API svarar inte just nu')
     } finally { setLoading(false) }
   }
   const browseDecade = (start: number) => {
@@ -291,7 +318,12 @@ export default function App() {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     let triedThumb = false
-    img.onerror = () => { if (!triedThumb && a.thumbnail && a.thumbnail !== a.fullImage) { triedThumb = true; img.src = a.thumbnail } }
+    img.onerror = () => {
+      // Försök thumbnail om fullbilden inte gick; annars säg ifrån så att
+      // klicket inte tyst rinner ut i sanden utan synlig återkoppling.
+      if (!triedThumb && a.thumbnail && a.thumbnail !== a.fullImage) { triedThumb = true; img.src = a.thumbnail }
+      else say('Kunde inte ladda bilden från KB. Prova en annan.')
+    }
     img.onload = () => {
       const id = uid()
       setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'xerox', level: 128, shadow: '#141414', highlight: '#ff4fa0', cell: 6, angle: 0, levels: 2, amount: 30 }])
@@ -310,6 +342,9 @@ export default function App() {
 
   const onElPointerDown = (e: PointerEvent<HTMLDivElement>, id: string) => {
     e.stopPropagation(); setSelected(id)
+    // Fånga pekaren på elementet så drag följer fingret/musen även om det
+    // lämnar elementet — utan detta scrollar touch-enheter sidan istället.
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* äldre webbläsare */ }
     const el = elements.find((x) => x.id === id)
     if (el) drag.current = { id, ox: el.x, oy: el.y, sx: e.clientX, sy: e.clientY }
   }
@@ -377,7 +412,7 @@ export default function App() {
         </div>
       </header>
 
-      <section style={{ background: PAPER, padding: '10px 18px', borderBottom: '2px solid ' + INK }}>
+      <section aria-label="Sök och bläddra i KB:s material" style={{ background: PAPER, padding: '10px 18px', borderBottom: '2px solid ' + INK }}>
         <form onSubmit={(e) => { e.preventDefault(); void runSearch(query) }} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Sök i KB:s fria material" placeholder="Sök i KB, t.ex. Stockholm, affisch, karta…" style={{ flex: 1, minWidth: 0, border: '2px solid ' + INK, background: '#fff', padding: '9px 10px', fontSize: 12 }} />
           <button type="submit" className="disp" style={{ background: INK, color: PAPER, border: '2px solid ' + INK, padding: '0 16px', fontSize: 14 }}>SÖK</button>
@@ -396,7 +431,12 @@ export default function App() {
           ))}
         </div>
         {loading && <div className="mono" style={{ fontSize: 11, color: MUTED }}>Hämtar från KB…</div>}
-        {!loading && (
+        {!loading && error && (
+          <div role="alert" className="mono" style={{ fontSize: 11, color: INK, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + PINK, padding: '9px 11px' }}>
+            KB:s API svarar inte just nu. Det är ett tillfälligt driftfel, inte ett tomt sökresultat — försök igen om en stund.
+          </div>
+        )}
+        {!loading && !error && (
           <div style={{ display: 'flex', gap: 8, overflow: 'auto', paddingBottom: 4 }}>
             {results.slice(0, 18).map((a) => (
               <button key={a.id} onClick={() => addImage(a)} title={a.title} aria-label={'Lägg in ' + a.title} style={{ flex: 'none', width: 76, padding: 0, border: '2px solid ' + INK, background: '#fff', cursor: 'pointer' }}>
@@ -430,7 +470,7 @@ export default function App() {
               tabIndex={0}
               role="group"
               aria-label="Zine-yta. Tabba till ett objekt för att markera, dra eller använd piltangenter för att flytta, plus och minus skalar, Delete tar bort."
-              style={{ position: 'relative', width: PAGE_W, height: PAGE_H, transform: 'scale(' + scale + ')', transformOrigin: 'top left', background: '#F6F3EA', border: '2px solid ' + INK, overflow: 'hidden' }}
+              style={{ position: 'relative', width: PAGE_W, height: PAGE_H, transform: 'scale(' + scale + ')', transformOrigin: 'top left', background: '#F6F3EA', border: '2px solid ' + INK, overflow: 'hidden', touchAction: 'none' }}
             >
               {sorted.map((el) => (
                 <div

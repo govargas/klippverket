@@ -15,6 +15,10 @@ function kbImageProxy(): Plugin {
           const u = new URL(req.url || '', 'http://localhost')
           const target = u.searchParams.get('url')
           if (!target) { res.statusCode = 400; res.end('missing url'); return }
+          // Spegla produktionens allowlist så dev och prod beter sig lika.
+          let host: string
+          try { host = new URL(target).hostname } catch { res.statusCode = 400; res.end('invalid url'); return }
+          if (host !== 'data.kb.se') { res.statusCode = 403; res.end('host not allowed'); return }
           const upstream = await (globalThis as any).fetch(target)
           if (!upstream.ok) { res.statusCode = upstream.status; res.end('upstream error'); return }
           res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg')
