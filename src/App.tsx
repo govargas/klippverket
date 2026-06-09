@@ -36,6 +36,7 @@ const uid = () => 'e' + ++counter
 const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
 const nextZ = (els: El[]) => (els.length ? Math.max(...els.map((e) => e.z)) + 1 : 1)
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+const EXAMPLES = ['Stockholm', 'Affisch', 'Karta', 'Porträtt', 'Kopparstick', 'Ornament']
 
 function filteredCanvas(el: ImgEl): HTMLCanvasElement {
   const cap = 700
@@ -236,6 +237,12 @@ export default function App() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Sök i KB:s fria material" placeholder="Sök i KB, t.ex. Stockholm, affisch, karta…" style={{ flex: 1, minWidth: 0, border: '2px solid ' + INK, background: '#fff', padding: '9px 10px', fontSize: 12 }} />
           <button type="submit" className="disp" style={{ background: INK, color: PAPER, border: '2px solid ' + INK, padding: '0 16px', fontSize: 14 }}>SÖK</button>
         </form>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <span className="mono" style={{ fontSize: 11, color: MUTED }}>Förslag:</span>
+          {EXAMPLES.map((t) => (
+            <button key={t} className="chip" aria-label={'Sök ' + t} onClick={() => { setQuery(t); void runSearch(t) }}>{t}</button>
+          ))}
+        </div>
         {loading && <div className="mono" style={{ fontSize: 11, color: MUTED }}>Hämtar från KB…</div>}
         {!loading && (
           <div style={{ display: 'flex', gap: 8, overflow: 'auto', paddingBottom: 4 }}>
