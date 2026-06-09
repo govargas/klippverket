@@ -36,7 +36,7 @@ function isFree(p?: Hit['usageAndAccessPolicy']): boolean {
 
 function toImage(h: Hit): KbImage {
   const full = h.imageServiceId
-    ? `${h.imageServiceId}/full/!1000,1000/0/default.jpg`
+    ? `${h.imageServiceId}/full/max/0/default.jpg`
     : (h.thumbnail as string)
   return {
     id: h['@id'],

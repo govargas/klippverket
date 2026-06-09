@@ -145,6 +145,8 @@ export default function App() {
   const addImage = (a: KbImage) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
+    let triedThumb = false
+    img.onerror = () => { if (!triedThumb && a.thumbnail && a.thumbnail !== a.fullImage) { triedThumb = true; img.src = a.thumbnail } }
     img.onload = () => {
       const id = uid()
       setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'xerox', level: 128, shadow: '#141414', highlight: '#ff4fa0', cell: 6, angle: 0, levels: 2, amount: 30 }])
