@@ -19,6 +19,7 @@ type ImgEl = Base & {
 }
 type TextEl = Base & { kind: 'text'; text: string; size: number; color: string }
 type El = ImgEl | TextEl
+type Page = { id: string; elements: El[] }
 
 const FILTER_ORDER: FilterId[] = ['none', 'xerox', 'duotone', 'halftone', 'dither', 'grain']
 const FILTER_LABEL: Record<FilterId, string> = { none: 'INGEN', xerox: 'XEROX', duotone: 'DUOTON', halftone: 'RASTER', dither: 'DITHER', grain: 'KORN' }
@@ -62,6 +63,32 @@ function filteredCanvas(el: ImgEl): HTMLCanvasElement {
   return c
 }
 
+function renderPage(els: El[]): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = PAGE_W; c.height = PAGE_H
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#F6F3EA'; ctx.fillRect(0, 0, PAGE_W, PAGE_H)
+  for (const el of [...els].sort((a, b) => a.z - b.z)) {
+    if (el.kind === 'image') {
+      const fc = filteredCanvas(el)
+      const w = el.scale * IMG_BASE
+      ctx.drawImage(fc, el.x, el.y, w, w * (fc.height / fc.width))
+    } else {
+      ctx.fillStyle = el.color
+      ctx.font = '700 ' + el.size + "px Anton, Impact, sans-serif"
+      ctx.textBaseline = 'top'
+      ctx.fillText(el.text, el.x, el.y)
+    }
+  }
+  const firstImg = els.find((e): e is ImgEl => e.kind === 'image')
+  if (firstImg) {
+    ctx.fillStyle = INK; ctx.fillRect(0, PAGE_H - 24, PAGE_W, 24)
+    ctx.fillStyle = PAPER; ctx.font = "10px 'Space Mono', monospace"; ctx.textBaseline = 'alphabetic'
+    ctx.fillText(trunc([firstImg.src.title, firstImg.src.creator, firstImg.src.year].filter(Boolean).join(' · '), 60) + ' · KB', 8, PAGE_H - 8)
+  }
+  return c
+}
+
 function ImageNode({ el }: { el: ImgEl }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
@@ -101,8 +128,11 @@ function About({ onClose }: { onClose: () => void }) {
 }
 
 export default function App() {
-  const [elements, setElements] = useState<El[]>([])
+  const [pages, setPages] = useState<Page[]>([{ id: uid(), elements: [] }])
+  const [current, setCurrent] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
+  const elements = pages[current]?.elements ?? []
+  const setElements = (fn: (els: El[]) => El[]) => setPages((ps) => ps.map((pg, i) => (i === current ? { ...pg, elements: fn(pg.elements) } : pg)))
   const [query, setQuery] = useState('Stockholm')
   const [results, setResults] = useState<KbImage[]>([])
   const [loading, setLoading] = useState(false)
@@ -206,31 +236,24 @@ export default function App() {
   }
 
   const exportPng = () => {
-    const c = document.createElement('canvas')
-    c.width = PAGE_W; c.height = PAGE_H
-    const ctx = c.getContext('2d')!
-    ctx.fillStyle = '#F6F3EA'; ctx.fillRect(0, 0, PAGE_W, PAGE_H)
-    for (const el of [...elements].sort((a, b) => a.z - b.z)) {
-      if (el.kind === 'image') {
-        const fc = filteredCanvas(el)
-        const w = el.scale * IMG_BASE
-        ctx.drawImage(fc, el.x, el.y, w, w * (fc.height / fc.width))
-      } else {
-        ctx.fillStyle = el.color
-        ctx.font = '700 ' + el.size + "px Anton, Impact, sans-serif"
-        ctx.textBaseline = 'top'
-        ctx.fillText(el.text, el.x, el.y)
-      }
-    }
-    const firstImg = elements.find((e): e is ImgEl => e.kind === 'image')
-    if (firstImg) {
-      ctx.fillStyle = INK; ctx.fillRect(0, PAGE_H - 24, PAGE_W, 24)
-      ctx.fillStyle = PAPER; ctx.font = "10px 'Space Mono', monospace"; ctx.textBaseline = 'alphabetic'
-      ctx.fillText(trunc([firstImg.src.title, firstImg.src.creator, firstImg.src.year].filter(Boolean).join(' · '), 60) + ' · KB', 8, PAGE_H - 8)
-    }
-    const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'klippverket-zine.png'; a.click()
-    say('Exporterade PNG med kreditering')
+    const c = renderPage(elements)
+    const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'klippverket-sida.png'; a.click()
+    say('Exporterade sidan som PNG med kreditering')
   }
+  const exportZinePdf = async () => {
+    const { jsPDF } = await import('jspdf')
+    const pdf = new jsPDF({ unit: 'pt', format: 'a5', orientation: 'portrait' })
+    const pw = 419.53, ph = 595.28
+    pages.forEach((pg, i) => {
+      if (i > 0) pdf.addPage('a5', 'portrait')
+      pdf.addImage(renderPage(pg.elements).toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pw, ph)
+    })
+    pdf.save('klippverket-zine.pdf')
+    say('Exporterade zine som PDF: ' + pages.length + ' sidor')
+  }
+  const addPage = () => { setPages((ps) => [...ps, { id: uid(), elements: [] }]); setCurrent(pages.length); setSelected(null); say('Ny sida') }
+  const removePage = () => { if (pages.length <= 1) return; const idx = current; setPages((ps) => ps.filter((_, i) => i !== idx)); setCurrent(Math.max(0, idx - 1)); setSelected(null); say('Tog bort sida') }
+  const goPage = (i: number) => { setCurrent(i); setSelected(null) }
 
   const sorted = [...elements].sort((a, b) => a.z - b.z)
   const labelStyle = { fontSize: 12 } as const
@@ -249,7 +272,8 @@ export default function App() {
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="tool" onClick={addText}>+ TEXT</button>
             <button className="tool" onClick={() => setAboutOpen(true)}>OM</button>
-            <button onClick={exportPng} className="disp" style={{ background: ACID, color: INK, border: '2px solid ' + INK, fontSize: 14, padding: '9px 14px' }}>EXPORTERA PNG</button>
+            <button className="tool" onClick={exportPng}>PNG</button>
+            <button onClick={() => void exportZinePdf()} className="disp" style={{ background: ACID, color: INK, border: '2px solid ' + INK, fontSize: 14, padding: '9px 14px' }}>ZINE PDF</button>
           </div>
         </div>
       </header>
@@ -289,6 +313,14 @@ export default function App() {
 
       <main ref={mainRef} className="kv-editor" style={{ background: 'var(--desk)', padding: 18, flex: 1 }}>
         <div className="kv-stagecol">
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+            <span className="mono" style={{ fontSize: 11, color: MUTED }}>Sidor:</span>
+            {pages.map((pg, i) => (
+              <button key={pg.id} className="chip" aria-pressed={i === current} aria-label={'Sida ' + (i + 1)} onClick={() => goPage(i)}>{i + 1}</button>
+            ))}
+            <button className="chip" aria-label="Lägg till sida" onClick={addPage}>+ sida</button>
+            {pages.length > 1 && <button className="chip" aria-label="Ta bort denna sida" onClick={removePage}>− sida</button>}
+          </div>
           <div style={{ width: PAGE_W * scale, height: PAGE_H * scale, maxWidth: '100%', overflow: 'hidden' }}>
             <div
               onPointerMove={onPointerMove}
