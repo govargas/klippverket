@@ -6,6 +6,9 @@ export type KbImage = {
   title: string
   year: string | null
   creator: string | null
+  creatorRole: string | null
+  genres: string[]
+  subjects: string[]
   thumbnail: string
   fullImage: string
   license: string | null
@@ -18,7 +21,9 @@ type Hit = {
   datePublished?: string
   thumbnail?: string
   imageServiceId?: string
-  contribution?: Array<{ agent?: Array<{ name?: string }> }>
+  contribution?: Array<{ agent?: Array<{ name?: string }>; role?: Array<{ prefLabelByLang?: { sv?: string } }> }>
+  genreForm?: Array<{ prefLabel?: { sv?: string } }>
+  subject?: Array<{ displayPrefLabel?: string; prefLabel?: string }>
   usageAndAccessPolicy?: Array<{ value?: string; '@id'?: string }>
 }
 
@@ -38,11 +43,15 @@ function toImage(h: Hit): KbImage {
   const full = h.imageServiceId
     ? `${h.imageServiceId}/full/max/0/default.jpg`
     : (h.thumbnail as string)
+  const contrib = h.contribution?.[0]
   return {
     id: h['@id'],
     title: Array.isArray(h.title) ? h.title.join(' ') : h.title ?? 'Utan titel',
-    year: h.datePublished ?? null,
-    creator: h.contribution?.[0]?.agent?.[0]?.name ?? null,
+    year: h.datePublished ? h.datePublished.slice(0, 4) : null,
+    creator: contrib?.agent?.[0]?.name ?? null,
+    creatorRole: contrib?.role?.[0]?.prefLabelByLang?.sv ?? null,
+    genres: (h.genreForm ?? []).map((g) => g.prefLabel?.sv).filter((x): x is string => !!x),
+    subjects: (h.subject ?? []).map((s) => s.displayPrefLabel ?? s.prefLabel).filter((x): x is string => !!x),
     thumbnail: proxied(h.thumbnail as string),
     fullImage: proxied(full),
     license: h.usageAndAccessPolicy?.[0]?.value ?? null,

@@ -411,7 +411,17 @@ export default function App() {
                   <label className="mono" style={labelStyle}>Storlek: {Math.round(sel.scale * 100)}%
                     <input type="range" min={0.2} max={2.5} step={0.05} value={sel.scale} onChange={(e) => { const v = Number(e.target.value); update(sel.id, (el) => ({ ...el, scale: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
                   </label>
-                  <div className="mono" style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>{trunc(sel.src.title, 44)} · {sel.src.license ?? 'okänd licens'}</div>
+                  <div style={{ background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + PINK, padding: '9px 11px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div className="mono" style={{ fontSize: 11, fontWeight: 700 }}>Om bilden</div>
+                    <div className="mono" style={{ fontSize: 12, lineHeight: 1.5 }}>{sel.src.title}</div>
+                    {(sel.src.creator || sel.src.year) && (
+                      <div className="mono" style={{ fontSize: 11, color: MUTED }}>{[[sel.src.creatorRole, sel.src.creator].filter(Boolean).join(': '), sel.src.year].filter(Boolean).join(' · ')}</div>
+                    )}
+                    {sel.src.genres.length > 0 && <div className="mono" style={{ fontSize: 11, color: MUTED }}>Typ: {sel.src.genres.join(', ')}</div>}
+                    {sel.src.subjects.length > 0 && <div className="mono" style={{ fontSize: 11, color: MUTED }}>Ämnen: {sel.src.subjects.join(', ')}</div>}
+                    <div className="mono" style={{ fontSize: 11, color: MUTED }}>Licens: {sel.src.license ?? 'okänd'}</div>
+                    <a className="mono" href={sel.src.sourceUrl} target="_blank" rel="noopener" style={{ fontSize: 11, color: '#1f4fd6' }}>Källa hos KB</a>
+                  </div>
                 </>
               )}
               {sel.kind === 'text' && (
