@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent, type KeyboardEvent } from 'react'
 import { FILTERS, FILTER_ORDER, defaultParams, type FilterId, type Params, type ParamValue } from './lib/filters'
+import { FONTS, FONT_ORDER, displayText, fontSpec, ensureFontsLoaded, type FontId } from './lib/fonts'
 import { searchFreeImages, type KbImage } from './lib/kb'
 
 const INK = '#141414'
@@ -16,7 +17,7 @@ type ImgEl = Base & {
   kind: 'image'; src: KbImage; img: HTMLImageElement
   filter: FilterId; params: Params
 }
-type TextEl = Base & { kind: 'text'; text: string; size: number; color: string }
+type TextEl = Base & { kind: 'text'; text: string; size: number; color: string; font: FontId }
 type El = ImgEl | TextEl
 type Page = { id: string; elements: El[] }
 
@@ -84,10 +85,11 @@ function renderPage(els: El[], scale = 1): HTMLCanvasElement {
       const w = el.scale * IMG_BASE
       ctx.drawImage(fc, el.x, el.y, w, w * (fc.height / fc.width))
     } else {
+      const f = FONTS[el.font] ?? FONTS.anton
       ctx.fillStyle = el.color
-      ctx.font = '700 ' + el.size + "px Anton, Impact, sans-serif"
+      ctx.font = fontSpec(f, el.size)
       ctx.textBaseline = 'top'
-      ctx.fillText(el.text, el.x, el.y)
+      ctx.fillText(displayText(el.text, f), el.x, el.y)
     }
   }
   const firstImg = els.find((e): e is ImgEl => e.kind === 'image')
@@ -139,7 +141,7 @@ async function deserialize(json: string): Promise<Page[]> {
     const els: El[] = []
     for (const e of pg.elements ?? []) {
       if (e.kind === 'image') { const img = await loadImage(e.src.fullImage); els.push({ ...e, id: uid(), img, params: migrateParams(e) }) }
-      else els.push({ ...e, id: uid() })
+      else els.push({ ...e, id: uid(), font: e.font ?? 'anton' })
     }
     pages.push({ id: uid(), elements: els })
   }
@@ -397,7 +399,7 @@ export default function App() {
   }
   const addText = () => {
     const id = uid()
-    setElements((els) => [...els, { id, kind: 'text', text: 'RUBRIK', size: 46, color: '#141414', x: 40, y: 470, scale: 1, z: nextZ(els) }])
+    setElements((els) => [...els, { id, kind: 'text', text: 'RUBRIK', size: 46, color: '#141414', font: 'anton', x: 40, y: 470, scale: 1, z: nextZ(els) }])
     setSelected(id); say('Lade till rubrik')
   }
   const remove = (id: string) => { setElements((els) => els.filter((e) => e.id !== id)); setSelected(null); say('Tog bort objekt') }
@@ -432,12 +434,17 @@ export default function App() {
     else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(sel.id) }
   }
 
-  const exportPng = () => {
+  // Typsnitten i texterna måste vara inlästa innan canvas ritar, annars faller
+  // exporten tillbaka till ett systemtypsnitt.
+  const fontsIn = (els: El[]): FontId[] => els.flatMap((e) => (e.kind === 'text' ? [e.font] : []))
+  const exportPng = async () => {
+    await ensureFontsLoaded(fontsIn(elements))
     const c = renderPage(elements, EXPORT_SCALE)
     const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'klippverket-sida.png'; a.click()
     say('Exporterade sidan som PNG med kreditering')
   }
   const exportZinePdf = async () => {
+    await ensureFontsLoaded(pages.flatMap((pg) => fontsIn(pg.elements)))
     const { jsPDF } = await import('jspdf')
     const pdf = new jsPDF({ unit: 'pt', format: 'a5', orientation: 'portrait' })
     const pw = 419.53, ph = 595.28
@@ -550,7 +557,7 @@ export default function App() {
                 >
                   {el.kind === 'image'
                     ? <ImageNode el={el} />
-                    : <span className="disp" style={{ fontSize: el.size, color: el.color, whiteSpace: 'pre', userSelect: 'none' }}>{el.text}</span>}
+                    : <span style={{ fontFamily: (FONTS[el.font] ?? FONTS.anton).family, fontWeight: (FONTS[el.font] ?? FONTS.anton).weight, fontSize: el.size, color: el.color, whiteSpace: 'pre', userSelect: 'none', lineHeight: 0.92, letterSpacing: (FONTS[el.font] ?? FONTS.anton).upper ? '.4px' : 0, textTransform: (FONTS[el.font] ?? FONTS.anton).upper ? 'uppercase' : 'none' }}>{el.text}</span>}
                 </div>
               ))}
               {elements.length === 0 && <div className="mono" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED, fontSize: 12, textAlign: 'center', padding: 20 }}>Sök och klicka en KB-bild för att börja klippa.</div>}
@@ -603,6 +610,19 @@ export default function App() {
                   <label className="mono" style={labelStyle}>Text
                     <input value={sel.text} onChange={(e) => { const v = e.target.value; update(sel.id, (el) => (el.kind === 'text' ? { ...el, text: v } : el)) }} style={{ width: '100%', display: 'block', marginTop: 6, border: '2px solid ' + INK, padding: '8px 8px', fontSize: 13 }} />
                   </label>
+                  <div>
+                    <div className="mono" style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>TYPSNITT · tidslinje genom typografin</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {FONT_ORDER.map((fid) => (
+                        <button key={fid} className="chip" aria-pressed={sel.font === fid}
+                          onClick={() => { update(sel.id, (el) => (el.kind === 'text' ? { ...el, font: fid } : el)); say('Typsnitt: ' + FONTS[fid].label) }}
+                          style={{ fontFamily: FONTS[fid].family }}>
+                          {FONTS[fid].label}<span className="mono" style={{ opacity: 0.55, marginLeft: 4, fontSize: 9 }}>{FONTS[fid].era}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mono" style={{ fontSize: 11, lineHeight: 1.6, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + ACID, padding: '9px 11px', color: INK }}>{(FONTS[sel.font] ?? FONTS.anton).info}</div>
                   <label className="mono" style={labelStyle}>Storlek: {sel.size}px
                     <input type="range" min={14} max={120} value={sel.size} onChange={(e) => { const v = Number(e.target.value); update(sel.id, (el) => (el.kind === 'text' ? { ...el, size: v } : el)) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
                   </label>
