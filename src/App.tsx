@@ -614,7 +614,7 @@ export default function App() {
           {!sel && (elements.length === 0 ? (
             <div className="mono" style={{ fontSize: 12, lineHeight: 1.6, color: INK, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + ACID, padding: '12px 13px' }}>
               <div className="disp" style={{ fontSize: 20, marginBottom: 8 }}>Välkommen till Klippverket</div>
-              <p style={{ marginTop: 0, marginBottom: 8 }}>Gör en egen zine av Sveriges fria kulturarv. Så här gör du:</p>
+              <p style={{ marginTop: 0, marginBottom: 8 }}>Gör en egen zine av historiska bilder ur Kungliga bibliotekets (KB) öppna kulturarv, hämtade direkt via KB:s öppna API. Så här gör du:</p>
               <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <li>Sök i KB:s öppna material — eller tryck <strong>Överraska mig</strong>.</li>
                 <li>Klicka en bild för att lägga den på ytan.</li>
