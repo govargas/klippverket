@@ -1,10 +1,13 @@
 // Klippverkets filter-motor. Rena funktioner på ImageData (canvas 2D) plus ett
 // register som beskriver varje filters reglage och trivia. Registret låter UI:t
 // genereras automatiskt, så ett nytt filter är en post här i stället för
-// ändringar på fem ställen. Det här är projektets unika tekniska hantverk.
+// ändringar på fem ställen. Det här är projektets unika tekniska hantverk:
+// en liten tidslinje genom foto-, tryck- och designhistorien.
 
 export type RGB = [number, number, number]
-export type FilterId = 'none' | 'xerox' | 'duotone' | 'halftone' | 'dither' | 'grain'
+export type FilterId =
+  | 'none' | 'engrave' | 'cyanotype' | 'sepia' | 'halftone' | 'cmyk'
+  | 'solarize' | 'posterize' | 'xerox' | 'dither' | 'duotone' | 'grain'
 
 export type ParamValue = number | string
 export type Params = Record<string, ParamValue>
@@ -24,6 +27,8 @@ export function hexToRgb(hex: string): RGB {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
+// Läs en param som tal/sträng med fallback (filter får aldrig krascha på en
+// saknad nyckel — gamla sparade ziner kanske inte har den).
 const num = (p: Params, k: string, d: number) => (typeof p[k] === 'number' ? (p[k] as number) : d)
 const str = (p: Params, k: string, d: string) => (typeof p[k] === 'string' ? (p[k] as string) : d)
 
@@ -90,6 +95,54 @@ export function halftone(src: ImageData, p: Params, ratio = 1): ImageData {
       if (r > 0.35) { ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill() }
     }
   }
+  return ctx.getImageData(0, 0, w, h)
+}
+
+// CMYK-rosett: fyra halvtonsplåtar (cyan/magenta/gul/svart) i klassiska vinklar,
+// multiplicerade på varandra. misregister förskjuter plåtarna ur passning som i
+// en sliten tryckpress. Den dyraste effekten — fyra raster i ett.
+export function cmyk(src: ImageData, p: Params, ratio = 1): ImageData {
+  const w = src.width, h = src.height
+  const cell = Math.max(3, Math.round(num(p, 'cell', 5) * ratio))
+  const mis = num(p, 'misreg', 0) * ratio
+  const c = document.createElement('canvas')
+  c.width = w; c.height = h
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
+  const sample = (x: number, y: number): [number, number, number, number] => {
+    const xi = x < 0 ? 0 : x >= w ? w - 1 : x | 0
+    const yi = y < 0 ? 0 : y >= h ? h - 1 : y | 0
+    const i = (yi * w + xi) * 4
+    const r = src.data[i] / 255, g = src.data[i + 1] / 255, b = src.data[i + 2] / 255
+    const k = 1 - Math.max(r, g, b)
+    if (k >= 1) return [0, 0, 0, 1]
+    return [(1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k]
+  }
+  // [vinkel°, färg, kanalindex, offsetX, offsetY]
+  const plates: Array<[number, string, 0 | 1 | 2 | 3, number, number]> = [
+    [15, '#00ffff', 0, mis, 0],
+    [75, '#ff00ff', 1, 0, mis],
+    [0, '#ffff00', 2, -mis, 0],
+    [45, '#000000', 3, 0, -mis],
+  ]
+  ctx.globalCompositeOperation = 'multiply'
+  const diag = Math.ceil(Math.hypot(w, h))
+  for (const [angleDeg, color, idx, ox, oy] of plates) {
+    ctx.fillStyle = color
+    const ang = (angleDeg * Math.PI) / 180
+    const cos = Math.cos(ang), sin = Math.sin(ang)
+    for (let gy = -diag; gy < diag; gy += cell) {
+      for (let gx = -diag; gx < diag; gx += cell) {
+        const px = w / 2 + gx * cos - gy * sin
+        const py = h / 2 + gx * sin + gy * cos
+        if (px < -cell || px > w + cell || py < -cell || py > h + cell) continue
+        const v = sample(px, py)[idx]
+        const r = (cell / 2) * Math.sqrt(v)
+        if (r > 0.35) { ctx.beginPath(); ctx.arc(px + ox, py + oy, r, 0, Math.PI * 2); ctx.fill() }
+      }
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over'
   return ctx.getImageData(0, 0, w, h)
 }
 
@@ -187,6 +240,108 @@ export function grain(src: ImageData, p: Params): ImageData {
   return out
 }
 
+// Cyanotyp (1842): järnblåtryck. Gammakurva (exponering) + mappning mot
+// berlinerblått och pappersvitt, med en gnutta korn för den kemiska känslan.
+export function cyanotype(src: ImageData, p: Params): ImageData {
+  const gamma = num(p, 'exposure', 1)
+  const shadow: RGB = [10, 28, 74], highlight: RGB = [212, 230, 244]
+  const out = new ImageData(src.width, src.height)
+  const s = src.data, o = out.data
+  for (let i = 0; i < s.length; i += 4) {
+    const t = Math.pow(luma(s[i], s[i + 1], s[i + 2]) / 255, gamma)
+    const n = (Math.random() * 2 - 1) * 6
+    o[i] = clampByte(mix(shadow[0], highlight[0], t) + n)
+    o[i + 1] = clampByte(mix(shadow[1], highlight[1], t) + n)
+    o[i + 2] = clampByte(mix(shadow[2], highlight[2], t) + n)
+    o[i + 3] = s[i + 3]
+  }
+  return out
+}
+
+// Sepia/albumin (1850–1900): brunt fototpapper. tone värmer/kyler, fade lyfter
+// svärtan (blekt arkiv), vignette mörknar kanterna.
+export function sepia(src: ImageData, p: Params): ImageData {
+  const tone = num(p, 'tone', 0) / 100        // -0.5..0.5
+  const fade = num(p, 'fade', 0) / 100         // 0..0.6
+  const vig = num(p, 'vignette', 0) / 100      // 0..0.8
+  const w = src.width, h = src.height
+  const shadow: RGB = [38 + tone * 30, 26, 14 - tone * 20]
+  const highlight: RGB = [240, 226 - tone * 10, 193 - tone * 30]
+  const out = new ImageData(w, h)
+  const s = src.data, o = out.data
+  const cx = w / 2, cy = h / 2, maxD = Math.hypot(cx, cy)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4
+    let t = luma(s[i], s[i + 1], s[i + 2]) / 255
+    t = fade + t * (1 - fade)
+    const d = Math.hypot(x - cx, y - cy) / maxD
+    const v = vig > 0 ? 1 - vig * d * d : 1
+    o[i] = clampByte(mix(shadow[0], highlight[0], t) * v)
+    o[i + 1] = clampByte(mix(shadow[1], highlight[1], t) * v)
+    o[i + 2] = clampByte(mix(shadow[2], highlight[2], t) * v)
+    o[i + 3] = s[i + 3]
+  }
+  return out
+}
+
+// Gravyrlinjer (1600–1800-tal): skraffering. Parallella linjer vars bredd växer
+// i skuggorna, som kopparstickets och sedelgravyrens linjer. density = avstånd.
+export function engrave(src: ImageData, p: Params, ratio = 1): ImageData {
+  const spacing = Math.max(2, Math.round(num(p, 'density', 6) * ratio))
+  const angleDeg = num(p, 'angle', 45)
+  const ink = hexToRgb(str(p, 'ink', '#141414'))
+  const w = src.width, h = src.height
+  const ang = (angleDeg * Math.PI) / 180
+  const cos = Math.cos(ang), sin = Math.sin(ang)
+  const out = new ImageData(w, h)
+  const s = out.data, srcd = src.data
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4
+    const lum = luma(srcd[i], srcd[i + 1], srcd[i + 2]) / 255
+    const u = x * cos + y * sin
+    const phase = ((u % spacing) + spacing) % spacing / spacing // 0..1
+    const tri = Math.abs(phase * 2 - 1)                          // 0 mitt, 1 kant
+    const isInk = tri < 1 - lum                                  // mörkt = bred linje
+    s[i] = isInk ? ink[0] : 255
+    s[i + 1] = isInk ? ink[1] : 255
+    s[i + 2] = isInk ? ink[2] : 255
+    s[i + 3] = srcd[i + 3]
+  }
+  return out
+}
+
+// Solarisering (1930-tal): Sabattier-effekten. Toner över en gräns vänds, det
+// surrealistiska mörkrummet (Man Ray, Lee Miller). Per kanal för färgskiften.
+export function solarize(src: ImageData, p: Params): ImageData {
+  const t = num(p, 'threshold', 128)
+  const k = num(p, 'strength', 100) / 100
+  const out = new ImageData(src.width, src.height)
+  const s = src.data, o = out.data
+  for (let i = 0; i < s.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const v = s[i + c]
+      o[i + c] = clampByte(v <= t ? v : v - 2 * (v - t) * k)
+    }
+    o[i + 3] = s[i + 3]
+  }
+  return out
+}
+
+// Posterisering (1960-tal): platta färgfält, psykedeliska affischer och Warhols
+// screentryck. Kvantisera varje kanal till N nivåer.
+export function posterize(src: ImageData, p: Params): ImageData {
+  const levels = Math.max(2, Math.round(num(p, 'levels', 4)))
+  const out = new ImageData(src.width, src.height)
+  const s = src.data, o = out.data
+  for (let i = 0; i < s.length; i += 4) {
+    o[i] = quant(s[i], levels)
+    o[i + 1] = quant(s[i + 1], levels)
+    o[i + 2] = quant(s[i + 2], levels)
+    o[i + 3] = s[i + 3]
+  }
+  return out
+}
+
 // =============================================================================
 // REGISTER: reglage + trivia + apply per filter. UI:t läser detta.
 // =============================================================================
@@ -199,18 +354,47 @@ export type ControlDef =
 export type FilterDef = {
   id: FilterId
   label: string
-  era: string // kort epok-etikett för chippen
+  era: string // kort epok-etikett för chippen, t.ex. "1842"
   info: string
   controls: ControlDef[]
   apply: (src: ImageData, p: Params, ratio: number) => ImageData
 }
 
+// Kronologisk ordning = liten tidslinje genom bildhistorien.
 export const FILTERS: Record<FilterId, FilterDef> = {
   none: {
     id: 'none', label: 'INGEN', era: '',
     info: 'Ingen effekt — originalbilden som den ligger i KB:s arkiv.',
     controls: [],
     apply: (s) => s,
+  },
+  engrave: {
+    id: 'engrave', label: 'GRAVYR', era: '1600-tal',
+    info: 'Skraffering: parallella linjer som blir tjockare i skuggorna. Så byggde kopparstickare och sedelgravörer upp ton långt före fotografiet — för hand, linje för linje.',
+    controls: [
+      { kind: 'range', key: 'density', label: 'Linjeavstånd', min: 2, max: 14, def: 6 },
+      { kind: 'range', key: 'angle', label: 'Vinkel', min: 0, max: 180, def: 45, suffix: '°' },
+      { kind: 'color', key: 'ink', label: 'Bläck', def: '#141414' },
+    ],
+    apply: (s, p, r) => engrave(s, p, r),
+  },
+  cyanotype: {
+    id: 'cyanotype', label: 'CYANOTYP', era: '1842',
+    info: 'Järnblåtryck. Anna Atkins gjorde världens första fotobok med tekniken, och arkitektens "blueprint" är samma kemi. Allt blir berlinerblått mot pappersvitt.',
+    controls: [
+      { kind: 'range', key: 'exposure', label: 'Exponering', min: 0.5, max: 2.2, step: 0.05, def: 1 },
+    ],
+    apply: (s, p) => cyanotype(s, p),
+  },
+  sepia: {
+    id: 'sepia', label: 'SEPIA', era: '1850',
+    info: 'Albuminpapperets bruna ton, byggt på äggvita. Mycket av KB:s 1800-talsmaterial är just sådana foton — blekta, varma, lite vignetterade i kanten.',
+    controls: [
+      { kind: 'range', key: 'tone', label: 'Ton', min: -50, max: 50, def: 0 },
+      { kind: 'range', key: 'fade', label: 'Blekning', min: 0, max: 60, def: 0 },
+      { kind: 'range', key: 'vignette', label: 'Vignett', min: 0, max: 80, def: 0 },
+    ],
+    apply: (s, p) => sepia(s, p),
   },
   halftone: {
     id: 'halftone', label: 'RASTER', era: '1880',
@@ -220,6 +404,32 @@ export const FILTERS: Record<FilterId, FilterDef> = {
       { kind: 'range', key: 'angle', label: 'Vinkel', min: 0, max: 90, def: 0, suffix: '°' },
     ],
     apply: (s, p, r) => halftone(s, p, r),
+  },
+  cmyk: {
+    id: 'cmyk', label: 'CMYK', era: '1900-tal',
+    info: 'Fyrfärgstryck: cyan, magenta, gult och svart läggs som fyra rasterplåtar i olika vinklar och bildar tillsammans ett rosettmönster. Lichtenstein förstorade just det till konst.',
+    controls: [
+      { kind: 'range', key: 'cell', label: 'Prickstorlek', min: 3, max: 12, def: 5 },
+      { kind: 'range', key: 'misreg', label: 'Passningsfel', min: 0, max: 6, def: 0 },
+    ],
+    apply: (s, p, r) => cmyk(s, p, r),
+  },
+  solarize: {
+    id: 'solarize', label: 'SOLARISERING', era: '1930-tal',
+    info: 'Sabattier-effekten: toner över en gräns vänds till sin motsats. Upptäcktes av en slump i mörkrummet och blev surrealismens signatur hos Man Ray och Lee Miller.',
+    controls: [
+      { kind: 'range', key: 'threshold', label: 'Gräns', min: 0, max: 255, def: 128 },
+      { kind: 'range', key: 'strength', label: 'Styrka', min: 0, max: 100, def: 100, suffix: '%' },
+    ],
+    apply: (s, p) => solarize(s, p),
+  },
+  posterize: {
+    id: 'posterize', label: 'POSTER', era: '1960-tal',
+    info: 'Reducera bilden till några få platta färgfält. Greppet bakom 60-talets psykedeliska affischer och Warhols screentryck — färgen blir grafisk och plakatmässig.',
+    controls: [
+      { kind: 'range', key: 'levels', label: 'Nivåer', min: 2, max: 8, def: 4 },
+    ],
+    apply: (s, p) => posterize(s, p),
   },
   xerox: {
     id: 'xerox', label: 'XEROX', era: '1970-tal',
@@ -268,11 +478,13 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
 }
 
-// Kronologisk ordning = liten tidslinje genom bildhistorien.
-export const FILTER_ORDER: FilterId[] = ['none', 'halftone', 'xerox', 'dither', 'duotone', 'grain']
+export const FILTER_ORDER: FilterId[] = [
+  'none', 'engrave', 'cyanotype', 'sepia', 'halftone', 'cmyk',
+  'solarize', 'posterize', 'xerox', 'dither', 'duotone', 'grain',
+]
 
 // Alla filters reglage-defaults i ett platt objekt. Nyckeln är unik per reglage
-// (level, shadow, cell, …) så ett enda params-objekt räcker per bild och
+// (level, shadow, cell, algo, …) så ett enda params-objekt räcker per bild och
 // filterbyte behåller övriga värden. Sparade ziner som saknar nyare nycklar
 // får dem ifyllda härifrån vid inläsning.
 export function defaultParams(): Params {
