@@ -9,6 +9,12 @@ body{ margin:0; background:var(--paper); color:var(--ink); font-family:'Space Mo
 .mono{ font-family:'Space Mono',monospace; }
 .chip{ font-family:'Space Mono',monospace; font-size:12px; border:1.5px solid var(--ink); background:var(--paper); color:var(--ink); padding:6px 11px; cursor:pointer; min-height:32px; }
 .chip[aria-pressed="true"]{ background:var(--ink); color:var(--paper); }
+/* Rader i tema-/epok-dropdownen: full bredd, hover i acidgrönt, valt alternativ
+   inverterat (svart) så det matchar chip-systemets aktiv-läge. */
+.menu-item{ font-family:'Space Mono',monospace; font-size:12px; text-align:left; border:0; border-bottom:1px solid rgba(20,20,20,.14); background:var(--paper); color:var(--ink); padding:9px 13px; cursor:pointer; min-height:36px; white-space:nowrap; }
+.menu-item:last-child{ border-bottom:0; }
+.menu-item:hover{ background:var(--acid); }
+.menu-item[aria-checked="true"]{ background:var(--ink); color:var(--paper); }
 .tool{ min-width:44px; min-height:36px; padding:0 9px; border:2px solid var(--paper); background:transparent; color:var(--paper); font-family:'Space Mono',monospace; font-size:11px; cursor:pointer; }
 .tool[aria-pressed="true"]{ background:var(--acid); border-color:var(--acid); color:var(--ink); }
 /* Tvillingknappar för export: identisk stil, format i display-font + en liten

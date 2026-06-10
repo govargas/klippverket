@@ -361,6 +361,11 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
   const [searched, setSearched] = useState(false)
+  // Aktiv filtrering ur dropdownsen: ett tema (textfråga) + en epok (datumintervall)
+  // kombineras till EN sökning. openMenu styr vilken dropdown som är utfälld.
+  const [activeTheme, setActiveTheme] = useState<string | null>(null)
+  const [activeEpoch, setActiveEpoch] = useState<number | null>(null)
+  const [openMenu, setOpenMenu] = useState<'theme' | 'epoch' | null>(null)
   const [announce, setAnnounce] = useState('')
   const [dropActive, setDropActive] = useState(false) // desktop: bild dras över arket
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -396,6 +401,21 @@ export default function App() {
   }
   useEffect(() => { void runSearch('Stockholm') }, [])
 
+  // Fäll in en öppen dropdown vid klick utanför den eller Escape.
+  useEffect(() => {
+    if (!openMenu) return
+    const onDown = (e: Event) => {
+      if (!(e.target as HTMLElement).closest('[data-menuwrap]')) setOpenMenu(null)
+    }
+    const onKey = (e: Event) => { if ((e as globalThis.KeyboardEvent).key === 'Escape') setOpenMenu(null) }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [openMenu])
+
   useEffect(() => {
     if (location.hash.startsWith('#z=')) {
       try {
@@ -408,7 +428,7 @@ export default function App() {
 
   const surprise = async () => {
     const term = SURPRISE[rnd(SURPRISE.length)]
-    setQuery(term)
+    setQuery(term); setActiveTheme(null); setActiveEpoch(null); setOpenMenu(null)
     setLoading(true); setError(false)
     try {
       let r = await searchFreeImages(term, 24, { offset: rnd(60) })
@@ -419,9 +439,18 @@ export default function App() {
       setError(true); setResults([]); setSearched(true); say('KB:s API svarar inte just nu')
     } finally { setLoading(false) }
   }
-  const browseDecade = (start: number) => {
-    setQuery('')
-    void runSearch('*', { from: start + '-01-01', to: start + 9 + '-12-31', offset: rnd(40) }, 'Bläddrar ' + start + '-talet')
+  // Tema + epok i en sökning: API:t tar ett q + ett from/to, så ett av varje
+  // samsas perfekt. '*' när inget tema valts låter epoken stå för sig själv.
+  // Räknar-etiketten ("N fria träffar") visas när ett tema finns; för ren
+  // epok-bläddring säger vi i stället vilken epok som visas.
+  const applyFilter = (theme: string | null, epoch: number | null) => {
+    setActiveTheme(theme); setActiveEpoch(epoch); setOpenMenu(null)
+    setQuery(theme ?? '')
+    const opts = epoch != null
+      ? { from: epoch + '-01-01', to: epoch + 9 + '-12-31', offset: rnd(40) }
+      : {}
+    const label = theme == null && epoch != null ? 'Bläddrar ' + epoch + '-talet' : undefined
+    void runSearch(theme || '*', opts, label)
   }
 
   const sel = elements.find((e) => e.id === selected) ?? null
@@ -558,22 +587,49 @@ export default function App() {
 
       <section aria-label="Sök och bläddra i KB:s material" style={{ background: PAPER, padding: '10px 18px', borderBottom: '2px solid ' + INK }}>
         <div style={{ marginBottom: 10 }}><ZoneLabel n={1} title="Arkivet" sub="sök & välj ur KB:s öppna samlingar" /></div>
-        <form onSubmit={(e) => { e.preventDefault(); void runSearch(query) }} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <form onSubmit={(e) => { e.preventDefault(); setActiveTheme(null); setActiveEpoch(null); setOpenMenu(null); void runSearch(query) }} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Sök i KB:s fria material" placeholder="Sök i KB, t.ex. Stockholm, affisch, karta…" style={{ flex: 1, minWidth: 0, border: '2px solid ' + INK, background: '#fff', padding: '9px 10px', fontSize: 12 }} />
           <button type="submit" className="disp" style={{ background: INK, color: PAPER, border: '2px solid ' + INK, padding: '0 16px', fontSize: 14 }}>SÖK</button>
         </form>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-          <button className="chip" onClick={() => void surprise()} style={{ background: ACID, borderColor: INK, fontWeight: 700 }}>Överraska mig</button>
-          <span className="mono" style={{ fontSize: 11, color: MUTED }}>Teman:</span>
-          {THEMES.map((t) => (
-            <button key={t} className="chip" aria-label={'Sök ' + t} onClick={() => { setQuery(t); void runSearch(t) }}>{t}</button>
-          ))}
-        </div>
+        {/* Tema och epok ligger i var sin dropdown i stället för två fulla
+            chip-rader — sparar skärmhöjd. Ett tema + en epok kan vara valda
+            samtidigt och kombineras till en sökning; valen visas som
+            borttagbara pills. */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <span className="mono" style={{ fontSize: 11, color: MUTED }}>Epok:</span>
-          {DECADES.map((d) => (
-            <button key={d} className="chip" aria-label={'Bläddra ' + d + '-talet'} onClick={() => browseDecade(d)}>{d}-tal</button>
-          ))}
+          <button className="chip" onClick={() => void surprise()} style={{ background: ACID, borderColor: INK, fontWeight: 700 }}>Överraska mig</button>
+
+          <div data-menuwrap style={{ position: 'relative' }}>
+            <button className="chip" aria-haspopup="true" aria-expanded={openMenu === 'theme'} aria-pressed={!!activeTheme}
+              onClick={() => setOpenMenu(openMenu === 'theme' ? null : 'theme')}>Teman ▾</button>
+            {openMenu === 'theme' && (
+              <div role="menu" aria-label="Välj tema" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 50, background: PAPER, border: '2px solid ' + INK, boxShadow: '4px 4px 0 ' + INK, display: 'flex', flexDirection: 'column', minWidth: 168, maxHeight: 280, overflow: 'auto' }}>
+                {THEMES.map((t) => (
+                  <button key={t} role="menuitemradio" aria-checked={activeTheme === t} className="menu-item"
+                    onClick={() => applyFilter(activeTheme === t ? null : t, activeEpoch)}>{t}</button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div data-menuwrap style={{ position: 'relative' }}>
+            <button className="chip" aria-haspopup="true" aria-expanded={openMenu === 'epoch'} aria-pressed={activeEpoch != null}
+              onClick={() => setOpenMenu(openMenu === 'epoch' ? null : 'epoch')}>Epok ▾</button>
+            {openMenu === 'epoch' && (
+              <div role="menu" aria-label="Välj epok" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 50, background: PAPER, border: '2px solid ' + INK, boxShadow: '4px 4px 0 ' + INK, display: 'flex', flexDirection: 'column', minWidth: 168, maxHeight: 280, overflow: 'auto' }}>
+                {DECADES.map((d) => (
+                  <button key={d} role="menuitemradio" aria-checked={activeEpoch === d} className="menu-item"
+                    onClick={() => applyFilter(activeTheme, activeEpoch === d ? null : d)}>{d}-tal</button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {activeTheme && (
+            <button className="chip" aria-label={'Ta bort tema ' + activeTheme} onClick={() => applyFilter(null, activeEpoch)} style={{ background: INK, color: PAPER }}>{activeTheme} ✕</button>
+          )}
+          {activeEpoch != null && (
+            <button className="chip" aria-label={'Ta bort epok ' + activeEpoch + '-talet'} onClick={() => applyFilter(activeTheme, null)} style={{ background: INK, color: PAPER }}>{activeEpoch}-tal ✕</button>
+          )}
         </div>
         {loading && <div className="mono" style={{ fontSize: 11, color: MUTED }}>Hämtar från KB…</div>}
         {!loading && error && (
