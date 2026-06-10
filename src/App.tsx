@@ -567,7 +567,22 @@ export default function App() {
         </div>
 
         <aside ref={propsRef} className="kv-props">
-          {!sel && <div className="mono" style={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}>Markera ett objekt för att redigera det.</div>}
+          {!sel && (elements.length === 0 ? (
+            <div className="mono" style={{ fontSize: 12, lineHeight: 1.6, color: INK, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + ACID, padding: '12px 13px' }}>
+              <div className="disp" style={{ fontSize: 20, marginBottom: 8 }}>Välkommen till Klippverket</div>
+              <p style={{ marginTop: 0, marginBottom: 8 }}>Gör en egen zine av Sveriges fria kulturarv. Så här gör du:</p>
+              <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <li>Sök i KB:s öppna material — eller tryck <strong>Överraska mig</strong>.</li>
+                <li>Klicka en bild för att lägga den på ytan.</li>
+                <li>Markera bilden och lägg på ett filter ur bildhistorien.</li>
+                <li>Lägg till rubrik med <strong>+ TEXT</strong> och välj typsnitt.</li>
+                <li>Exportera som <strong>PNG</strong> eller <strong>ZINE PDF</strong>.</li>
+              </ol>
+              <p style={{ marginBottom: 0, marginTop: 8, color: MUTED }}>Allt material är fritt/public domain och källan bäddas in i exporten.</p>
+            </div>
+          ) : (
+            <div className="mono" style={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}>Markera ett objekt för att redigera det.</div>
+          ))}
           {sel && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', gap: 6 }}>
