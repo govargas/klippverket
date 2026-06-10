@@ -11,6 +11,12 @@ body{ margin:0; background:var(--paper); color:var(--ink); font-family:'Space Mo
 .chip[aria-pressed="true"]{ background:var(--ink); color:var(--paper); }
 .tool{ min-width:44px; min-height:36px; padding:0 9px; border:2px solid var(--paper); background:transparent; color:var(--paper); font-family:'Space Mono',monospace; font-size:11px; cursor:pointer; }
 .tool[aria-pressed="true"]{ background:var(--acid); border-color:var(--acid); color:var(--ink); }
+/* Tvillingknappar för export: identisk stil, format i display-font + en liten
+   mono-rad som säger vad du får (en sida / hela zinet). */
+.export-btn{ display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1;
+  background:var(--acid); color:var(--ink); border:2px solid var(--ink); padding:5px 13px; cursor:pointer;
+  font-family:'Anton',Impact,sans-serif; text-transform:uppercase; letter-spacing:.4px; font-size:15px; }
+.export-btn small{ font-family:'Space Mono',monospace; font-weight:400; font-size:8px; letter-spacing:.6px; }
 input, textarea, button, select{ font-family:'Space Mono', monospace; }
 ::placeholder{ color:#5a5a5a; opacity:1; }
 :focus-visible{ outline:3px solid #1f4fd6; outline-offset:2px; }

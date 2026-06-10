@@ -519,11 +519,13 @@ export default function App() {
             <h1 className="disp" style={{ fontSize: 22 }}>Klippverket</h1>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button className="tool" onClick={addText}>+ TEXT</button>
             <button className="tool" onClick={() => setAboutOpen(true)}>OM</button>
             <button className="tool" onClick={() => setZinesOpen(true)}>ZINES</button>
-            <button className="tool" onClick={() => void exportPng()}>PNG</button>
-            <button onClick={() => void exportZinePdf()} className="disp" style={{ background: ACID, color: INK, border: '2px solid ' + INK, fontSize: 14, padding: '9px 14px' }}>ZINE PDF</button>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginLeft: 4, paddingLeft: 10, borderLeft: '1px solid rgba(242,239,230,.3)' }}>
+              <span className="mono" style={{ fontSize: 9, color: PAPER, opacity: 0.65, letterSpacing: 0.5, alignSelf: 'center' }}>EXPORTERA</span>
+              <button className="export-btn" onClick={() => void exportPng()} aria-label="Exportera nuvarande sida som PNG">PNG<small>en sida</small></button>
+              <button className="export-btn" onClick={() => void exportZinePdf()} aria-label="Exportera hela zinet som PDF">PDF<small>hela zinet</small></button>
+            </div>
           </div>
         </div>
       </header>
@@ -568,13 +570,16 @@ export default function App() {
 
       <main ref={mainRef} className="kv-editor" style={{ padding: 18, flex: 1 }}>
         <div className="kv-stagecol">
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-            <span className="mono" style={{ fontSize: 11, color: MUTED }}>Sidor:</span>
-            {pages.map((pg, i) => (
-              <button key={pg.id} className="chip" aria-pressed={i === current} aria-label={'Sida ' + (i + 1)} onClick={() => goPage(i)}>{i + 1}</button>
-            ))}
-            <button className="chip" aria-label="Lägg till sida" onClick={addPage}>+ sida</button>
-            {pages.length > 1 && <button className="chip" aria-label="Ta bort denna sida" onClick={removePage}>− sida</button>}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span className="mono" style={{ fontSize: 11, color: MUTED }}>Sidor:</span>
+              {pages.map((pg, i) => (
+                <button key={pg.id} className="chip" aria-pressed={i === current} aria-label={'Sida ' + (i + 1)} onClick={() => goPage(i)}>{i + 1}</button>
+              ))}
+              <button className="chip" aria-label="Lägg till sida" onClick={addPage}>+ sida</button>
+              {pages.length > 1 && <button className="chip" aria-label="Ta bort denna sida" onClick={removePage}>− sida</button>}
+            </div>
+            <button className="disp" onClick={addText} aria-label="Lägg till rubriktext på sidan" style={{ background: INK, color: PAPER, border: '2px solid ' + INK, fontSize: 13, padding: '7px 14px', cursor: 'pointer' }}>+ TEXT</button>
           </div>
           {/* Hård offsetskugga (ingen blur) får arket att ligga som ett fysiskt
               papper på bordet. Skuggan ritas utanför elementet och klipps inte
@@ -623,7 +628,7 @@ export default function App() {
                 <li>Klicka en bild för att lägga den på ytan.</li>
                 <li>Markera bilden och lägg på ett filter ur bildhistorien.</li>
                 <li>Lägg till rubrik med <strong>+ TEXT</strong> och välj typsnitt.</li>
-                <li>Exportera som <strong>PNG</strong> eller <strong>ZINE PDF</strong>.</li>
+                <li>Exportera sidan som <strong>PNG</strong> — eller hela zinet som <strong>PDF</strong>.</li>
               </ol>
               <p style={{ marginBottom: 0, marginTop: 8, color: MUTED }}>Allt material är fritt/public domain och källan bäddas in i exporten.</p>
             </div>
