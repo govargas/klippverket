@@ -594,7 +594,11 @@ export default function App() {
         <ZoneLabel n={2} title="Verkstaden" sub="klipp, filtrera, lägg till text & exportera" />
         <div className="kv-editor">
         <div className="kv-stagecol">
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, justifyContent: 'space-between' }}>
+          {/* Knappraden binds till exakt arkets bredd (PAGE_W * scale) så
+              "Sidor" ligger vid arkets vänstra hörn och "+ TEXT" vid det högra
+              på alla vyer — annars flyger +TEXT ut till skärmkanten på tablet
+              där kolumnen är bredare än A5-arket. */}
+          <div style={{ width: PAGE_W * scale, maxWidth: '100%', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <span className="mono" style={{ fontSize: 11, color: MUTED }}>Sidor:</span>
               {pages.map((pg, i) => (
