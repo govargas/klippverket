@@ -392,7 +392,7 @@ export default function App() {
     }
     img.onload = () => {
       const id = uid()
-      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'xerox', params: defaultParams() }])
+      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'none', params: defaultParams() }])
       setSelected(id); say('Lade till bild: ' + a.title)
     }
     img.src = a.fullImage
