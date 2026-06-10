@@ -34,4 +34,14 @@ input, textarea, button, select{ font-family:'Space Mono', monospace; }
 @media (min-width:1920px){
   .kv-shell{ max-width:1600px; margin:0 auto; }
 }
+/* "Klipp ut"-känsla på arkivhyllan: streckad rosa kontur vid hover, som
+   klipplinjen runt ett urklipp. Lutningen är ren dekor och körs bara när
+   användaren inte bett om reducerad rörelse. Fokus behåller den globala
+   blå konturen (tillgänglighet). */
+.shelf-thumb:hover{ outline:2px dashed var(--pink); outline-offset:3px; }
+@media (prefers-reduced-motion: no-preference){
+  .shelf-thumb{ transition:transform .15s ease; }
+  .shelf-thumb:hover{ transform:rotate(-1.2deg) translateY(-2px); }
+}
+
 @media (prefers-reduced-motion: reduce){ *{ transition:none !important; animation:none !important; scroll-behavior:auto !important; } }

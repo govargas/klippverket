@@ -555,7 +555,7 @@ export default function App() {
         {!loading && !error && (
           <div style={{ display: 'flex', gap: 8, overflow: 'auto', paddingBottom: 4 }}>
             {results.slice(0, 18).map((a) => (
-              <button key={a.id} onClick={() => addImage(a)} title={a.title} aria-label={'Lägg in ' + a.title} style={{ flex: 'none', width: 76, padding: 0, border: '2px solid ' + INK, background: '#fff', cursor: 'pointer' }}>
+              <button key={a.id} className="shelf-thumb" onClick={() => addImage(a)} title={a.title} aria-label={'Lägg in ' + a.title} style={{ flex: 'none', width: 76, padding: 0, border: '2px solid ' + INK, background: '#fff', cursor: 'pointer' }}>
                 <span style={{ display: 'block', aspectRatio: '3 / 4', overflow: 'hidden', background: '#e6e2d8' }}>
                   <img src={a.thumbnail} alt={a.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </span>
