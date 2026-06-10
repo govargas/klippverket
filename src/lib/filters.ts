@@ -36,46 +36,79 @@ const str = (p: Params, k: string, d: string) => (typeof p[k] === 'string' ? (p[
 // FILTER (rena pixel-/canvas-operationer)
 // =============================================================================
 
-// Xerox: 1-bit svart/vit över en luminans-tröskel.
+// Xerox: 1-bit svart/vit. contrast spänner tonerna före tröskeln, generation
+// härmar kopia-av-kopia (oskärpa + ny tröskel), invert ger vit-på-svart.
 export function xerox(src: ImageData, p: Params): ImageData {
   const level = num(p, 'level', 128)
-  const out = new ImageData(src.width, src.height)
-  const s = src.data, o = out.data
-  for (let i = 0; i < s.length; i += 4) {
-    const v = luma(s[i], s[i + 1], s[i + 2]) >= level ? 255 : 0
-    o[i] = o[i + 1] = o[i + 2] = v
-    o[i + 3] = s[i + 3]
+  const contrast = num(p, 'contrast', 0)
+  const generation = Math.round(num(p, 'generation', 1))
+  const invert = num(p, 'invert', 0) === 1
+  const w = src.width, h = src.height
+  const f = (259 * (contrast + 255)) / (255 * (259 - contrast)) // standard kontrastfaktor
+  // binär buffert (0/255) från kontrastjusterad luminans
+  let bin = new Uint8ClampedArray(w * h)
+  for (let i = 0, pix = 0; i < src.data.length; i += 4, pix++) {
+    const lv = clampByte(f * (luma(src.data[i], src.data[i + 1], src.data[i + 2]) - 128) + 128)
+    bin[pix] = lv >= level ? 255 : 0
+  }
+  // generationsförfall: lätt 3x3-medel som suddar kanten, sedan ny tröskel
+  for (let g = 1; g < generation; g++) {
+    const next = new Uint8ClampedArray(w * h)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let sum = 0, n = 0
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xi = x + dx, yi = y + dy
+        if (xi < 0 || yi < 0 || xi >= w || yi >= h) continue
+        sum += bin[yi * w + xi]; n++
+      }
+      next[y * w + x] = sum / n >= 128 ? 255 : 0
+    }
+    bin = next
+  }
+  const out = new ImageData(w, h)
+  for (let pix = 0; pix < bin.length; pix++) {
+    const v = invert ? 255 - bin[pix] : bin[pix]
+    const o = pix * 4
+    out.data[o] = out.data[o + 1] = out.data[o + 2] = v
+    out.data[o + 3] = src.data[o + 3]
   }
   return out
 }
 
-// Duoton / riso: mappa luminans till en gradient mellan två färger.
+// Duoton / riso / triton: mappa luminans (via gammakurva) genom skugga → mellan →
+// högdager. mid default mitt emellan så standardläget ser ut som en ren duoton.
 export function duotone(src: ImageData, p: Params): ImageData {
   const shadow = hexToRgb(str(p, 'shadow', '#141414'))
   const highlight = hexToRgb(str(p, 'highlight', '#ff4fa0'))
+  const mid = hexToRgb(str(p, 'mid', '#7a4060'))
+  const gamma = num(p, 'gamma', 1)
   const out = new ImageData(src.width, src.height)
   const s = src.data, o = out.data
   for (let i = 0; i < s.length; i += 4) {
-    const t = luma(s[i], s[i + 1], s[i + 2]) / 255
-    o[i] = shadow[0] + (highlight[0] - shadow[0]) * t
-    o[i + 1] = shadow[1] + (highlight[1] - shadow[1]) * t
-    o[i + 2] = shadow[2] + (highlight[2] - shadow[2]) * t
-    o[i + 3] = s[i + 3]
+    const t = Math.pow(luma(s[i], s[i + 1], s[i + 2]) / 255, gamma)
+    // piecewise: skugga→mellan (0–0.5), mellan→högdager (0.5–1)
+    let r: number, g: number, b: number
+    if (t < 0.5) { const u = t * 2; r = mix(shadow[0], mid[0], u); g = mix(shadow[1], mid[1], u); b = mix(shadow[2], mid[2], u) }
+    else { const u = (t - 0.5) * 2; r = mix(mid[0], highlight[0], u); g = mix(mid[1], highlight[1], u); b = mix(mid[2], highlight[2], u) }
+    o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = s[i + 3]
   }
   return out
 }
 
-// Raster / halftone: prickrutnät, prickstorlek växer med mörkret, valfri vinkel.
-// ratio skalar cellen mot exportupplösningen.
+// Raster / halftone: prickrutnät, prickstorlek växer med mörkret, valfri vinkel,
+// form (rund/kvadrat) och bläck-/pappersfärg. ratio skalar cellen mot exporten.
 export function halftone(src: ImageData, p: Params, ratio = 1): ImageData {
   const w = src.width, h = src.height
   const cell = num(p, 'cell', 6)
   const angleDeg = num(p, 'angle', 0)
+  const shape = str(p, 'shape', 'round')
+  const ink = str(p, 'ink', '#000000')
+  const paper = str(p, 'paper', '#ffffff')
   const c = document.createElement('canvas')
   c.width = w; c.height = h
   const ctx = c.getContext('2d')!
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-  ctx.fillStyle = '#000000'
+  ctx.fillStyle = paper; ctx.fillRect(0, 0, w, h)
+  ctx.fillStyle = ink
   const cs = Math.max(3, Math.round(cell * ratio))
   const lumAt = (x: number, y: number) => {
     const xi = x < 0 ? 0 : x >= w ? w - 1 : x | 0
@@ -92,7 +125,10 @@ export function halftone(src: ImageData, p: Params, ratio = 1): ImageData {
       const py = h / 2 + gx * sin + gy * cos
       if (px < -cs || px > w + cs || py < -cs || py > h + cs) continue
       const r = (cs / 2) * Math.sqrt(1 - lumAt(px, py))
-      if (r > 0.35) { ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill() }
+      if (r > 0.35) {
+        if (shape === 'square') { const sQ = r * 1.6; ctx.fillRect(px - sQ / 2, py - sQ / 2, sQ, sQ) }
+        else { ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill() }
+      }
     }
   }
   return ctx.getImageData(0, 0, w, h)
@@ -225,16 +261,24 @@ export function dither(src: ImageData, p: Params, ratio = 1): ImageData {
   return out
 }
 
-// Korn: monokromt slumpbrus.
-export function grain(src: ImageData, p: Params): ImageData {
+// Korn: brus, valbar kornstorlek (block skalas mot exporten) och färg av/på.
+export function grain(src: ImageData, p: Params, ratio = 1): ImageData {
   const amount = num(p, 'amount', 30)
-  const out = new ImageData(src.width, src.height)
+  const size = Math.max(1, Math.round(num(p, 'grainSize', 1) * ratio))
+  const color = num(p, 'colorNoise', 0) === 1
+  const w = src.width, h = src.height
+  const out = new ImageData(w, h)
   const s = src.data, o = out.data
-  for (let i = 0; i < s.length; i += 4) {
-    const n = (Math.random() * 2 - 1) * amount
-    o[i] = clampByte(s[i] + n)
-    o[i + 1] = clampByte(s[i + 1] + n)
-    o[i + 2] = clampByte(s[i + 2] + n)
+  const gw = Math.ceil(w / size)
+  const noise = new Float32Array(gw * Math.ceil(h / size) * (color ? 3 : 1))
+  for (let i = 0; i < noise.length; i++) noise[i] = (Math.random() * 2 - 1) * amount
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const bx = Math.floor(x / size), by = Math.floor(y / size)
+    const ni = (by * gw + bx) * (color ? 3 : 1)
+    const i = (y * w + x) * 4
+    o[i] = clampByte(s[i] + noise[ni])
+    o[i + 1] = clampByte(s[i + 1] + noise[ni + (color ? 1 : 0)])
+    o[i + 2] = clampByte(s[i + 2] + noise[ni + (color ? 2 : 0)])
     o[i + 3] = s[i + 3]
   }
   return out
@@ -398,10 +442,15 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   halftone: {
     id: 'halftone', label: 'RASTER', era: '1880',
-    info: 'Rastret bygger upp bilden av prickar, stora där det är mörkt och små där det är ljust. Tekniken uppfanns på 1880-talet för att kunna trycka fotografier i tidningar. Håll en gammal tidningsbild nära ögat så ser du prickarna.',
+    info: 'Bilden byggs av prickar, stora där det är mörkt. Tekniken uppfanns på 1880-talet för att kunna trycka fotografier i tidningar. Håll en gammal tidningsbild nära ögat så ser du prickarna.',
     controls: [
       { kind: 'range', key: 'cell', label: 'Prickstorlek', min: 3, max: 16, def: 6 },
       { kind: 'range', key: 'angle', label: 'Vinkel', min: 0, max: 90, def: 0, suffix: '°' },
+      { kind: 'select', key: 'shape', label: 'Form', def: 'round', options: [
+        { value: 'round', label: 'Rund' }, { value: 'square', label: 'Kvadrat' },
+      ] },
+      { kind: 'color', key: 'ink', label: 'Bläck', def: '#000000' },
+      { kind: 'color', key: 'paper', label: 'Papper', def: '#ffffff' },
     ],
     apply: (s, p, r) => halftone(s, p, r),
   },
@@ -433,9 +482,14 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   xerox: {
     id: 'xerox', label: 'XEROX', era: '1970-tal',
-    info: 'Tröskel gör varje pixel antingen svart eller vit, helt utan gråskala. Precis så fungerade fotokopiatorn och tidiga faxar, och det blev fanzinekulturens hårda, korniga signatur.',
+    info: 'Tröskel gör varje pixel svart eller vit, helt utan gråskala. Precis så fungerade fotokopiatorn — fanzinekulturens hårda, korniga signatur. Höj "generation" för kopia-av-kopia-förfall.',
     controls: [
       { kind: 'range', key: 'level', label: 'Tröskel', min: 0, max: 255, def: 128 },
+      { kind: 'range', key: 'contrast', label: 'Kontrast', min: -100, max: 100, def: 0 },
+      { kind: 'range', key: 'generation', label: 'Generation', min: 1, max: 4, def: 1 },
+      { kind: 'select', key: 'invert', label: 'Negativ', def: '0', options: [
+        { value: '0', label: 'Svart på vitt' }, { value: '1', label: 'Vitt på svart' },
+      ] },
     ],
     apply: (s, p) => xerox(s, p),
   },
@@ -461,20 +515,26 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   duotone: {
     id: 'duotone', label: 'DUOTON', era: '1980-tal',
-    info: 'Duoton byter ut gråskalan mot två färger, en för skuggorna och en för högdagrarna. Det härmar risografen och tidigt screentryck, där varje färg trycktes som ett eget lager, ofta i grälla kombinationer.',
+    info: 'Byter gråskalan mot färger: en för skuggorna, en för högdagrarna, en mittemellan. Härmar risografen och screentrycket, där varje färg trycktes som ett eget lager — ofta i grälla kombinationer.',
     controls: [
       { kind: 'color', key: 'shadow', label: 'Skugga', def: '#141414' },
+      { kind: 'color', key: 'mid', label: 'Mellanton', def: '#7a4060' },
       { kind: 'color', key: 'highlight', label: 'Högdager', def: '#ff4fa0' },
+      { kind: 'range', key: 'gamma', label: 'Gamma', min: 0.4, max: 2.5, step: 0.05, def: 1 },
     ],
     apply: (s, p) => duotone(s, p),
   },
   grain: {
     id: 'grain', label: 'KORN', era: 'tidlöst',
-    info: 'Korn lägger på slumpmässigt brus, som filmkornet i analog film eller suset på en sliten kopia. Lite korn får en ren digital bild att kännas äldre, taktil och hemmagjord.',
+    info: 'Slumpmässigt brus, som filmkornet i analog film eller suset på en sliten kopia. Lite korn får en ren digital bild att kännas äldre, taktil och hemmagjord.',
     controls: [
       { kind: 'range', key: 'amount', label: 'Mängd', min: 0, max: 100, def: 30 },
+      { kind: 'range', key: 'grainSize', label: 'Kornstorlek', min: 1, max: 6, def: 1 },
+      { kind: 'select', key: 'colorNoise', label: 'Brus', def: '0', options: [
+        { value: '0', label: 'Monokromt' }, { value: '1', label: 'Färg' },
+      ] },
     ],
-    apply: (s, p) => grain(s, p),
+    apply: (s, p, r) => grain(s, p, r),
   },
 }
 
