@@ -24,12 +24,13 @@ input, textarea, button, select{ font-family:'Space Mono', monospace; }
 
 /* Mobile-first layout, brytpunkter: tablet 768, desktop 1024, xl 1920 */
 /* Skrivbordet: desk-färgen + ett subtilt pappersgrain (SVG-noise) så ytan får
-   riso-tryckets taktilitet i stället för en platt fyllning. */
-.kv-editor{
-  display:flex; flex-direction:column; gap:16px;
+   riso-tryckets taktilitet i stället för en platt fyllning. Ligger på .kv-desk
+   (hela verkstadszonen) så zonrubriken delar yta med arbetsfältet. */
+.kv-desk{
   background-color:var(--desk);
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
 }
+.kv-editor{ display:flex; flex-direction:column; gap:16px; }
 .kv-stagecol{ width:100%; }
 .kv-props{ width:100%; }
 @media (min-width:1024px){

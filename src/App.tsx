@@ -337,6 +337,19 @@ function LayerEditor({ layer, index, removable, onFilter, onParam, onRemove }: {
   )
 }
 
+// Numrerad zonrubrik — speglar välkomststegen och delar appen i två tydliga
+// faser: hitta material (Arkivet) och göra zinet (Verkstaden). Siffran i en
+// fylld ruta knyter an till logotypens kvadrat.
+function ZoneLabel({ n, title, sub }: { n: number; title: string; sub: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+      <span className="disp" style={{ fontSize: 13, background: INK, color: PAPER, padding: '2px 8px' }} aria-hidden="true">{n}</span>
+      <span className="disp" style={{ fontSize: 15 }}>{title}</span>
+      <span className="mono" style={{ fontSize: 10, color: MUTED }}>{sub}</span>
+    </div>
+  )
+}
+
 export default function App() {
   const [pages, setPages] = useState<Page[]>([{ id: uid(), elements: [] }])
   const [current, setCurrent] = useState(0)
@@ -520,7 +533,7 @@ export default function App() {
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="tool" onClick={() => setAboutOpen(true)}>OM</button>
-            <button className="tool" onClick={() => setZinesOpen(true)}>ZINES</button>
+            <button className="tool" onClick={() => setZinesOpen(true)}>MINA ZINES</button>
             <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginLeft: 4, paddingLeft: 10, borderLeft: '1px solid rgba(242,239,230,.3)' }}>
               <span className="mono" style={{ fontSize: 9, color: PAPER, opacity: 0.65, letterSpacing: 0.5, alignSelf: 'center' }}>EXPORTERA</span>
               <button className="export-btn" onClick={() => void exportPng()} aria-label="Exportera nuvarande sida som PNG">PNG<small>en sida</small></button>
@@ -531,6 +544,7 @@ export default function App() {
       </header>
 
       <section aria-label="Sök och bläddra i KB:s material" style={{ background: PAPER, padding: '10px 18px', borderBottom: '2px solid ' + INK }}>
+        <div style={{ marginBottom: 10 }}><ZoneLabel n={1} title="Arkivet" sub="sök & välj ur KB:s öppna samlingar" /></div>
         <form onSubmit={(e) => { e.preventDefault(); void runSearch(query) }} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Sök i KB:s fria material" placeholder="Sök i KB, t.ex. Stockholm, affisch, karta…" style={{ flex: 1, minWidth: 0, border: '2px solid ' + INK, background: '#fff', padding: '9px 10px', fontSize: 12 }} />
           <button type="submit" className="disp" style={{ background: INK, color: PAPER, border: '2px solid ' + INK, padding: '0 16px', fontSize: 14 }}>SÖK</button>
@@ -568,7 +582,9 @@ export default function App() {
         )}
       </section>
 
-      <main ref={mainRef} className="kv-editor" style={{ padding: 18, flex: 1 }}>
+      <main ref={mainRef} className="kv-desk" style={{ padding: 18, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <ZoneLabel n={2} title="Verkstaden" sub="klipp, filtrera, lägg till text & exportera" />
+        <div className="kv-editor">
         <div className="kv-stagecol">
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -702,6 +718,7 @@ export default function App() {
             </div>
           )}
         </aside>
+        </div>
       </main>
 
       <footer style={{ background: INK, color: '#a6a6a6', padding: '10px 18px' }} className="mono">
