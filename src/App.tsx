@@ -42,11 +42,12 @@ const DECADES = [1600, 1700, 1800, 1850, 1880, 1900, 1920]
 const SURPRISE = ['Porträtt', 'Affischer', 'Kartor', 'Stockholm', 'Kunglig', 'Fågel', 'Stad', 'Fest', 'Kopparstick']
 const rnd = (n: number) => Math.floor(Math.random() * n)
 
-// Full upplösning för export, lägre för live-förhandsvisning. Bilden visas
-// ändå bara ~200px på ytan, så att filtrera 700px vid varje slider-steg är
-// slöseri som fryser UI:t. Förhandsvisningen filtrerar färre pixlar.
+// Full upplösning för export, lägre för live-förhandsvisning. Förhandsvisningen
+// filtrerar bara så många pixlar som faktiskt syns på skärmen (visad storlek ×
+// devicePixelRatio, upp till PREVIEW_MAX) så Retina blir skarp utan att frysa
+// UI:t vid drag.
 const EXPORT_CAP = 700
-const PREVIEW_CAP = 360
+const PREVIEW_MAX = 800
 
 function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
   const iw = el.img.naturalWidth || el.img.width
@@ -59,6 +60,10 @@ function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = w; c.height = h
   const ctx = c.getContext('2d')!
+  // Hög interpoleringskvalitet vid nedskalningen — annars aliaseras detaljrika
+  // kopparstick/kartor redan innan filtret körs och ser korniga ut.
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(el.img, 0, 0, w, h)
   if (el.filter === 'none') return c
   const base = ctx.getImageData(0, 0, w, h)
@@ -147,12 +152,20 @@ function ImageNode({ el }: { el: ImgEl }) {
     const raf = requestAnimationFrame(() => {
       const c = ref.current
       if (!c) return
-      const fc = filteredCanvas(el, PREVIEW_CAP)
+      // Filtrera vid den fysiska pixelstorlek bilden faktiskt visas i: visad
+      // bredd (× ev. portrait-höjd) gånger devicePixelRatio, så Retina blir
+      // skarp. Tak vid PREVIEW_MAX så drag inte fryser på stora bilder.
+      const iw = el.img.naturalWidth || el.img.width || 1
+      const ih = el.img.naturalHeight || el.img.height || 1
+      const longSideCss = el.scale * IMG_BASE * Math.max(1, ih / iw)
+      const dpr = window.devicePixelRatio || 1
+      const cap = clamp(Math.ceil(longSideCss * dpr), 160, PREVIEW_MAX)
+      const fc = filteredCanvas(el, cap)
       c.width = fc.width; c.height = fc.height
       c.getContext('2d')!.drawImage(fc, 0, 0)
     })
     return () => cancelAnimationFrame(raf)
-  }, [el.img, el.filter, el.level, el.shadow, el.highlight, el.cell, el.angle, el.levels, el.amount])
+  }, [el.img, el.scale, el.filter, el.level, el.shadow, el.highlight, el.cell, el.angle, el.levels, el.amount])
   return <canvas ref={ref} aria-hidden="true" style={{ width: el.scale * IMG_BASE, height: 'auto', display: 'block', pointerEvents: 'none' }} />
 }
 
