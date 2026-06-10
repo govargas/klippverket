@@ -16,6 +16,9 @@ function luma(r: number, g: number, b: number): number {
 function clampByte(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : v
 }
+function mix(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
 export function hexToRgb(hex: string): RGB {
   const n = parseInt(hex.replace('#', ''), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
@@ -90,31 +93,81 @@ export function halftone(src: ImageData, p: Params, ratio = 1): ImageData {
   return ctx.getImageData(0, 0, w, h)
 }
 
-// Dither (Floyd–Steinberg): kvantisera gråskala till få nivåer och sprid felet.
-export function dither(src: ImageData, p: Params): ImageData {
-  const levels = Math.max(2, Math.round(num(p, 'levels', 2)))
-  const w = src.width, h = src.height
-  const g = new Float32Array(w * h)
-  for (let i = 0, pix = 0; i < src.data.length; i += 4, pix++) g[pix] = luma(src.data[i], src.data[i + 1], src.data[i + 2])
+// --- dither: en hel familj felspridnings- och ordnade algoritmer --------------
+type Kernel = { div: number; pts: Array<[number, number, number]> } // [dx, dy, vikt]
+const KERNELS: Record<string, Kernel> = {
+  floyd: { div: 16, pts: [[1, 0, 7], [-1, 1, 3], [0, 1, 5], [1, 1, 1]] },
+  atkinson: { div: 8, pts: [[1, 0, 1], [2, 0, 1], [-1, 1, 1], [0, 1, 1], [1, 1, 1], [0, 2, 1]] },
+  jarvis: { div: 48, pts: [[1, 0, 7], [2, 0, 5], [-2, 1, 3], [-1, 1, 5], [0, 1, 7], [1, 1, 5], [2, 1, 3], [-2, 2, 1], [-1, 2, 3], [0, 2, 5], [1, 2, 3], [2, 2, 1]] },
+  stucki: { div: 42, pts: [[1, 0, 8], [2, 0, 4], [-2, 1, 2], [-1, 1, 4], [0, 1, 8], [1, 1, 4], [2, 1, 2], [-2, 2, 1], [-1, 2, 2], [0, 2, 4], [1, 2, 2], [2, 2, 1]] },
+  sierra: { div: 32, pts: [[1, 0, 5], [2, 0, 3], [-2, 1, 2], [-1, 1, 4], [0, 1, 5], [1, 1, 4], [2, 1, 2], [-1, 2, 2], [0, 2, 3], [1, 2, 2]] },
+  burkes: { div: 32, pts: [[1, 0, 8], [2, 0, 4], [-2, 1, 2], [-1, 1, 4], [0, 1, 8], [1, 1, 4], [2, 1, 2]] },
+}
+function bayerMatrix(n: number): number[][] {
+  if (n <= 2) return [[0, 2], [3, 1]]
+  const half = bayerMatrix(n / 2), s = n / 2
+  const m = Array.from({ length: n }, () => new Array(n).fill(0))
+  for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+    const b = half[y][x] * 4
+    m[y][x] = b; m[y][x + s] = b + 2; m[y + s][x] = b + 3; m[y + s][x + s] = b + 1
+  }
+  return m
+}
+function quant(v: number, levels: number): number {
   const step = 255 / (levels - 1)
-  const out = new ImageData(w, h)
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const idx = y * w + x
-      const old = g[idx]
-      const nv = clampByte(Math.round(old / step) * step)
-      const err = old - nv
-      g[idx] = nv
-      if (x + 1 < w) g[idx + 1] += (err * 7) / 16
-      if (y + 1 < h) {
-        if (x > 0) g[idx + w - 1] += (err * 3) / 16
-        g[idx + w] += (err * 5) / 16
-        if (x + 1 < w) g[idx + w + 1] += (err * 1) / 16
-      }
-      const o = idx * 4
-      out.data[o] = out.data[o + 1] = out.data[o + 2] = nv
-      out.data[o + 3] = src.data[o + 3]
+  return clampByte(Math.round(v / step) * step)
+}
+
+export function dither(src: ImageData, p: Params, ratio = 1): ImageData {
+  const algo = str(p, 'algo', 'floyd')
+  const levels = Math.max(2, Math.round(num(p, 'levels', 2)))
+  const pixel = Math.max(1, Math.round(num(p, 'pixel', 1) * ratio))
+  const ink = hexToRgb(str(p, 'ink', '#141414'))
+  const w = src.width, h = src.height
+  // arbeta i lägre upplösning (pixel>1) för chunky retro-look, skala sedan upp
+  const gw = Math.max(1, Math.ceil(w / pixel)), gh = Math.max(1, Math.ceil(h / pixel))
+  const g = new Float32Array(gw * gh)
+  for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+    // medelvärde över blocket
+    let sum = 0, n = 0
+    for (let dy = 0; dy < pixel; dy++) for (let dx = 0; dx < pixel; dx++) {
+      const x = gx * pixel + dx, y = gy * pixel + dy
+      if (x >= w || y >= h) continue
+      const i = (y * w + x) * 4
+      sum += luma(src.data[i], src.data[i + 1], src.data[i + 2]); n++
     }
+    g[gy * gw + gx] = n ? sum / n : 0
+  }
+  if (algo === 'bayer4' || algo === 'bayer8') {
+    const n = algo === 'bayer8' ? 8 : 4
+    const m = bayerMatrix(n)
+    const span = 255 / (levels - 1)
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const t = (m[y % n][x % n] + 0.5) / (n * n) - 0.5
+      g[y * gw + x] = quant(g[y * gw + x] + t * span, levels)
+    }
+  } else {
+    const ker = KERNELS[algo] ?? KERNELS.floyd
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const idx = y * gw + x
+      const old = g[idx], nv = quant(old, levels), err = old - nv
+      g[idx] = nv
+      for (const [dx, dy, wt] of ker.pts) {
+        const xi = x + dx, yi = y + dy
+        if (xi < 0 || xi >= gw || yi < 0 || yi >= gh) continue
+        g[yi * gw + xi] += (err * wt) / ker.div
+      }
+    }
+  }
+  // skala upp (nearest) och färga: mörkt → bläck, ljust → vitt
+  const out = new ImageData(w, h)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = g[Math.floor(y / pixel) * gw + Math.floor(x / pixel)] / 255
+    const o = (y * w + x) * 4
+    out.data[o] = mix(ink[0], 255, v)
+    out.data[o + 1] = mix(ink[1], 255, v)
+    out.data[o + 2] = mix(ink[2], 255, v)
+    out.data[o + 3] = src.data[(y * w + x) * 4 + 3]
   }
   return out
 }
@@ -178,11 +231,23 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   dither: {
     id: 'dither', label: 'DITHER', era: '1976',
-    info: 'Dithering strör ut prickar i mönster och lurar ögat att se fler toner än det egentligen finns. Det användes flitigt på tidiga svartvita datorskärmar och i den tidiga webbens 256-färgsbilder.',
+    info: 'Dithering strör ut prickar i mönster och lurar ögat att se fler toner än det finns. Hjärtat i tidiga svartvita skärmar, GIF-bilder och dagens pixel-trend.',
     controls: [
+      { kind: 'select', key: 'algo', label: 'Algoritm', def: 'floyd', options: [
+        { value: 'floyd', label: 'Floyd–Steinberg', info: 'Floyd–Steinberg (1976): standarden. Sprider felet till fyra grannar — GIF-erans arbetshäst.' },
+        { value: 'atkinson', label: 'Atkinson', info: 'Atkinson (1984): Bill Atkinson på Apple, looken i tidiga Macintosh och HyperCard. Behåller bara en del av felet, vilket ger ljusare, renare bilder.' },
+        { value: 'jarvis', label: 'Jarvis–Judice–Ninke', info: 'Jarvis–Judice–Ninke (1976): sprider felet till tolv grannar — mjukare och mer detaljerat än Floyd–Steinberg, men långsammare.' },
+        { value: 'stucki', label: 'Stucki', info: 'Stucki (1981): en snabbare, skarpare variant av Jarvis med ren tonövergång.' },
+        { value: 'sierra', label: 'Sierra', info: 'Sierra (1989): Frankie Sierras familj av kärnor som balanserar skärpa och hastighet.' },
+        { value: 'burkes', label: 'Burkes', info: 'Burkes (1988): en förenkling av Stucki — färre grannar, snabbare, lite grövre.' },
+        { value: 'bayer4', label: 'Bayer 4×4', info: 'Ordnad dithering (Bayer, 1973): ett fast korsstygnsmönster i stället för slumpspridning. Looken hos tidiga skrivare och Game Boy.' },
+        { value: 'bayer8', label: 'Bayer 8×8', info: 'Ordnad dithering (Bayer, 1973), finare 8×8-matris — tätare regelbundet mönster, mjukare toner.' },
+      ] },
       { kind: 'range', key: 'levels', label: 'Nivåer', min: 2, max: 6, def: 2 },
+      { kind: 'range', key: 'pixel', label: 'Pixelstorlek', min: 1, max: 8, def: 1 },
+      { kind: 'color', key: 'ink', label: 'Bläck', def: '#141414' },
     ],
-    apply: (s, p) => dither(s, p),
+    apply: (s, p, r) => dither(s, p, r),
   },
   duotone: {
     id: 'duotone', label: 'DUOTON', era: '1980-tal',
