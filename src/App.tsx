@@ -566,7 +566,7 @@ export default function App() {
         )}
       </section>
 
-      <main ref={mainRef} className="kv-editor" style={{ background: 'var(--desk)', padding: 18, flex: 1 }}>
+      <main ref={mainRef} className="kv-editor" style={{ padding: 18, flex: 1 }}>
         <div className="kv-stagecol">
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
             <span className="mono" style={{ fontSize: 11, color: MUTED }}>Sidor:</span>
@@ -576,7 +576,10 @@ export default function App() {
             <button className="chip" aria-label="Lägg till sida" onClick={addPage}>+ sida</button>
             {pages.length > 1 && <button className="chip" aria-label="Ta bort denna sida" onClick={removePage}>− sida</button>}
           </div>
-          <div style={{ width: PAGE_W * scale, height: PAGE_H * scale, maxWidth: '100%', overflow: 'hidden' }}>
+          {/* Hård offsetskugga (ingen blur) får arket att ligga som ett fysiskt
+              papper på bordet. Skuggan ritas utanför elementet och klipps inte
+              av overflow:hidden. */}
+          <div style={{ width: PAGE_W * scale, height: PAGE_H * scale, maxWidth: '100%', overflow: 'hidden', boxShadow: '6px 6px 0 ' + INK }}>
             <div
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
