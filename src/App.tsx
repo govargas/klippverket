@@ -459,7 +459,14 @@ export default function App() {
   }
   const addText = () => {
     const id = uid()
-    setElements((els) => [...els, { id, kind: 'text', text: 'RUBRIK', size: 46, color: '#141414', font: 'anton', x: 40, y: 470, scale: 1, z: nextZ(els) }])
+    const size = 46
+    // Mät rubrikens bredd med samma typsnitt så exempeltexten kan centreras
+    // högst upp på arket i stället för att landa nere till vänster.
+    const ctx = document.createElement('canvas').getContext('2d')!
+    ctx.font = fontSpec(FONTS.anton, size)
+    const w = ctx.measureText(displayText('RUBRIK', FONTS.anton)).width
+    const x = clamp(Math.round((PAGE_W - w) / 2), 0, PAGE_W)
+    setElements((els) => [...els, { id, kind: 'text', text: 'RUBRIK', size, color: '#141414', font: 'anton', x, y: 24, scale: 1, z: nextZ(els) }])
     setSelected(id); say('Lade till rubrik')
   }
   const remove = (id: string) => { setElements((els) => els.filter((e) => e.id !== id)); setSelected(null); say('Tog bort objekt') }
@@ -532,18 +539,19 @@ export default function App() {
 
       <header style={{ background: INK, color: PAPER, padding: '14px 18px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          {/* Titel + navigering (OM, MINA ZINES) hålls ihop på samma rad/höjd —
+              även på mobil. Titeln skalas med clamp så den får plats bredvid
+              knapparna på de minsta skärmarna. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
             <span style={{ width: 14, height: 14, background: ACID, display: 'inline-block' }} aria-hidden="true" />
-            <h1 className="disp" style={{ fontSize: 22 }}>Klippverket</h1>
-          </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <h1 className="disp" style={{ fontSize: 'clamp(17px, 5.2vw, 22px)' }}>Klippverket</h1>
             <button className="tool" onClick={() => setAboutOpen(true)}>OM</button>
             <button className="tool" onClick={() => setZinesOpen(true)}>MINA ZINES</button>
-            <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, marginLeft: 4, paddingLeft: 10, borderLeft: '1px solid rgba(242,239,230,.3)' }}>
-              <span className="mono" style={{ fontSize: 9, color: PAPER, opacity: 0.65, letterSpacing: 0.5, alignSelf: 'center' }}>EXPORTERA</span>
-              <button className="export-btn" onClick={() => void exportPng()} aria-label="Exportera nuvarande sida som PNG">PNG<small>en sida</small></button>
-              <button className="export-btn" onClick={() => void exportZinePdf()} aria-label="Exportera hela zinet som PDF">PDF<small>hela zinet</small></button>
-            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, flexWrap: 'wrap' }}>
+            <span className="mono" style={{ fontSize: 9, color: PAPER, opacity: 0.65, letterSpacing: 0.5, alignSelf: 'center' }}>EXPORTERA</span>
+            <button className="export-btn" onClick={() => void exportPng()} aria-label="Exportera nuvarande sida som PNG">PNG<small>en sida</small></button>
+            <button className="export-btn" onClick={() => void exportZinePdf()} aria-label="Exportera hela zinet som PDF">PDF<small>hela zinet</small></button>
           </div>
         </div>
       </header>
