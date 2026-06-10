@@ -13,9 +13,11 @@ const PAGE_H = 651
 const IMG_BASE = 200
 
 type Base = { id: string; x: number; y: number; scale: number; z: number }
+// Ett bildobjekt bär en stapel av 1–2 filterlager som appliceras i ordning.
+type FilterLayer = { filter: FilterId; params: Params }
 type ImgEl = Base & {
   kind: 'image'; src: KbImage; img: HTMLImageElement
-  filter: FilterId; params: Params
+  layers: FilterLayer[]
 }
 type TextEl = Base & { kind: 'text'; text: string; size: number; color: string; font: FontId }
 type El = ImgEl | TextEl
@@ -56,14 +58,19 @@ function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(el.img, 0, 0, w, h)
-  const def = FILTERS[el.filter]
-  if (!def || el.filter === 'none') return c
   // ratio skalar pixel-dimensionerade reglage (raster-cell, gravyrlinjer,
   // kornstorlek …) mot exportupplösningen, så effekten ser likadan ut i
   // förhandsvisning och export.
   const ratio = Math.min(maxDim, cap) / Math.min(maxDim, EXPORT_CAP)
-  const base = ctx.getImageData(0, 0, w, h)
-  ctx.putImageData(def.apply(base, el.params, ratio), 0, 0)
+  let base = ctx.getImageData(0, 0, w, h)
+  let applied = false
+  for (const layer of el.layers) {
+    const def = FILTERS[layer.filter]
+    if (!def || layer.filter === 'none') continue
+    base = def.apply(base, layer.params, ratio) // varje lager ovanpå föregående
+    applied = true
+  }
+  if (applied) ctx.putImageData(base, 0, 0)
   return c
 }
 
@@ -134,13 +141,24 @@ function migrateParams(e: Record<string, unknown>): Params {
   else for (const k of OLD_PARAM_KEYS) if (e[k] !== undefined) p[k] = e[k] as ParamValue
   return p
 }
+// Bygg filterstapeln vid inläsning. Nyare ziner har redan layers[]; äldre hade
+// ett enda {filter, params} (eller platta filterfält) — de blir ett lager.
+function migrateLayers(e: Record<string, unknown>): FilterLayer[] {
+  if (Array.isArray(e.layers) && e.layers.length) {
+    return e.layers.map((L: { filter?: FilterId; params?: Params }) => ({
+      filter: (L.filter ?? 'none') as FilterId,
+      params: Object.assign(defaultParams(), L.params ?? {}),
+    }))
+  }
+  return [{ filter: (e.filter as FilterId) ?? 'none', params: migrateParams(e) }]
+}
 async function deserialize(json: string): Promise<Page[]> {
   const doc = JSON.parse(json)
   const pages: Page[] = []
   for (const pg of doc.pages ?? []) {
     const els: El[] = []
     for (const e of pg.elements ?? []) {
-      if (e.kind === 'image') { const img = await loadImage(e.src.fullImage); els.push({ ...e, id: uid(), img, params: migrateParams(e) }) }
+      if (e.kind === 'image') { const img = await loadImage(e.src.fullImage); els.push({ ...e, id: uid(), img, layers: migrateLayers(e) }) }
       else els.push({ ...e, id: uid(), font: e.font ?? 'anton' })
     }
     pages.push({ id: uid(), elements: els })
@@ -169,9 +187,9 @@ function ImageNode({ el }: { el: ImgEl }) {
       c.getContext('2d')!.drawImage(fc, 0, 0)
     })
     return () => cancelAnimationFrame(raf)
-    // el.params byts ut till ett nytt objekt vid varje reglageändring, så
+    // el.layers byts ut till en ny array vid varje filter-/reglageändring, så
     // referensjämförelsen räcker för att rendera om.
-  }, [el.img, el.scale, el.filter, el.params])
+  }, [el.img, el.scale, el.layers])
   return <canvas ref={ref} aria-hidden="true" style={{ width: el.scale * IMG_BASE, height: 'auto', display: 'block', pointerEvents: 'none' }} />
 }
 
@@ -253,12 +271,12 @@ function MyZines({ pages, onLoad, onClose, say }: { pages: Page[]; onLoad: (p: P
 // plus, för select-reglage, den valda variantens egen lilla faktarad.
 const ctrlLabel = { fontSize: 12 } as const
 const inputRow = { width: '100%', display: 'block', marginTop: 6 } as const
-function FilterPanel({ el, setParam }: { el: ImgEl; setParam: (id: string, key: string, value: ParamValue) => void }) {
-  const def = FILTERS[el.filter]
+function FilterPanel({ layer, onParam }: { layer: FilterLayer; onParam: (key: string, value: ParamValue) => void }) {
+  const def = FILTERS[layer.filter]
   const optionInfos: string[] = []
   for (const c of def.controls) {
     if (c.kind === 'select') {
-      const opt = c.options.find((o) => o.value === String(el.params[c.key]))
+      const opt = c.options.find((o) => o.value === String(layer.params[c.key]))
       if (opt?.info) optionInfos.push(opt.info)
     }
   }
@@ -268,22 +286,22 @@ function FilterPanel({ el, setParam }: { el: ImgEl; setParam: (id: string, key: 
         if (c.kind === 'color') {
           return (
             <label key={c.key} className="mono" style={ctrlLabel}>{c.label}
-              <input type="color" value={String(el.params[c.key])} onChange={(e) => setParam(el.id, c.key, e.target.value)} style={{ display: 'block', marginTop: 6 }} />
+              <input type="color" value={String(layer.params[c.key])} onChange={(e) => onParam(c.key, e.target.value)} style={{ display: 'block', marginTop: 6 }} />
             </label>
           )
         }
         if (c.kind === 'select') {
           return (
             <label key={c.key} className="mono" style={ctrlLabel}>{c.label}
-              <select value={String(el.params[c.key])} onChange={(e) => setParam(el.id, c.key, e.target.value)} style={{ ...inputRow, border: '1.5px solid ' + INK, background: '#fff', padding: '4px 6px', fontSize: 12 }}>
+              <select value={String(layer.params[c.key])} onChange={(e) => onParam(c.key, e.target.value)} style={{ ...inputRow, border: '1.5px solid ' + INK, background: '#fff', padding: '4px 6px', fontSize: 12 }}>
                 {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </label>
           )
         }
         return (
-          <label key={c.key} className="mono" style={ctrlLabel}>{c.label}: {Number(el.params[c.key])}{c.suffix ?? ''}
-            <input type="range" min={c.min} max={c.max} step={c.step ?? 1} value={Number(el.params[c.key])} onChange={(e) => setParam(el.id, c.key, Number(e.target.value))} style={inputRow} />
+          <label key={c.key} className="mono" style={ctrlLabel}>{c.label}: {Number(layer.params[c.key])}{c.suffix ?? ''}
+            <input type="range" min={c.min} max={c.max} step={c.step ?? 1} value={Number(layer.params[c.key])} onChange={(e) => onParam(c.key, Number(e.target.value))} style={inputRow} />
           </label>
         )
       })}
@@ -292,6 +310,30 @@ function FilterPanel({ el, setParam }: { el: ImgEl; setParam: (id: string, key: 
         {optionInfos.map((t, i) => <div key={i} style={{ marginTop: 6 }}>{t}</div>)}
       </div>
     </>
+  )
+}
+
+// Ett filterlager i stapeln: rubrik (+ × om det går att ta bort), filterrad och
+// lagrets reglage. Två lager kan staplas; de appliceras uppifrån och ned.
+function LayerEditor({ layer, index, removable, onFilter, onParam, onRemove }: {
+  layer: FilterLayer; index: number; removable: boolean
+  onFilter: (f: FilterId) => void; onParam: (key: string, value: ParamValue) => void; onRemove: () => void
+}) {
+  return (
+    <div style={{ border: '1.5px solid ' + INK, padding: '10px 11px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="mono" style={{ fontSize: 11, fontWeight: 700 }}>FILTER {index + 1}</div>
+        {removable && <button className="chip" onClick={onRemove} aria-label={'Ta bort filter ' + (index + 1)} style={{ minHeight: 24, padding: '2px 9px' }}>✕</button>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {FILTER_ORDER.map((f) => (
+          <button key={f} className="chip" aria-pressed={layer.filter === f} onClick={() => onFilter(f)}>
+            {FILTERS[f].label}{FILTERS[f].era && <span style={{ opacity: 0.55, marginLeft: 4, fontSize: 9 }}>{FILTERS[f].era}</span>}
+          </button>
+        ))}
+      </div>
+      <FilterPanel layer={layer} onParam={onParam} />
+    </div>
   )
 }
 
@@ -392,7 +434,7 @@ export default function App() {
     }
     img.onload = () => {
       const id = uid()
-      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'none', params: defaultParams() }])
+      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), layers: [{ filter: 'none', params: defaultParams() }] }])
       setSelected(id); say('Lade till bild: ' + a.title)
     }
     img.src = a.fullImage
@@ -404,8 +446,10 @@ export default function App() {
   }
   const remove = (id: string) => { setElements((els) => els.filter((e) => e.id !== id)); setSelected(null); say('Tog bort objekt') }
   const toFront = (id: string) => update(id, (e) => ({ ...e, z: nextZ(elements) }))
-  const setFilter = (id: string, f: FilterId) => { updImg(id, (e) => ({ ...e, filter: f })); say('Filter: ' + FILTERS[f].label) }
-  const setParam = (id: string, key: string, value: ParamValue) => updImg(id, (e) => ({ ...e, params: { ...e.params, [key]: value } }))
+  const setLayerFilter = (id: string, idx: number, f: FilterId) => { updImg(id, (e) => ({ ...e, layers: e.layers.map((L, i) => (i === idx ? { ...L, filter: f } : L)) })); say('Filter ' + (idx + 1) + ': ' + FILTERS[f].label) }
+  const setParam = (id: string, idx: number, key: string, value: ParamValue) => updImg(id, (e) => ({ ...e, layers: e.layers.map((L, i) => (i === idx ? { ...L, params: { ...L.params, [key]: value } } : L)) }))
+  const addLayer = (id: string) => { updImg(id, (e) => (e.layers.length >= 2 ? e : { ...e, layers: [...e.layers, { filter: 'none', params: defaultParams() }] })); say('Lade till ett filterlager') }
+  const removeLayer = (id: string, idx: number) => { updImg(id, (e) => (e.layers.length <= 1 ? e : { ...e, layers: e.layers.filter((_, i) => i !== idx) })); say('Tog bort filterlager') }
 
   const onElPointerDown = (e: PointerEvent<HTMLDivElement>, id: string) => {
     e.stopPropagation(); setSelected(id)
@@ -591,18 +635,21 @@ export default function App() {
               </div>
               {sel.kind === 'image' && (
                 <>
-                  <div>
-                    <div className="mono" style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>FILTER · tidslinje genom bildhistorien</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {FILTER_ORDER.map((f) => (
-                        <button key={f} className="chip" aria-pressed={sel.filter === f} onClick={() => setFilter(sel.id, f)}>
-                          {FILTERS[f].label}{FILTERS[f].era && <span style={{ opacity: 0.55, marginLeft: 4, fontSize: 9 }}>{FILTERS[f].era}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <FilterPanel el={sel} setParam={setParam} />
+                  <div className="mono" style={{ fontSize: 11, color: MUTED }}>Filter ur bildhistorien — stapla upp till två lager.</div>
+                  {sel.layers.map((layer, i) => (
+                    <LayerEditor
+                      key={i}
+                      layer={layer}
+                      index={i}
+                      removable={sel.layers.length > 1}
+                      onFilter={(f) => setLayerFilter(sel.id, i, f)}
+                      onParam={(k, v) => setParam(sel.id, i, k, v)}
+                      onRemove={() => removeLayer(sel.id, i)}
+                    />
+                  ))}
+                  {sel.layers.length < 2 && (
+                    <button className="chip" onClick={() => addLayer(sel.id)} style={{ alignSelf: 'flex-start' }}>+ Lägg till filter ovanpå</button>
+                  )}
 
                   <label className="mono" style={labelStyle}>Storlek: {Math.round(sel.scale * 100)}%
                     <input type="range" min={0.2} max={2.5} step={0.05} value={sel.scale} onChange={(e) => { const v = Number(e.target.value); update(sel.id, (el) => ({ ...el, scale: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
