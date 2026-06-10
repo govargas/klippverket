@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type KeyboardEvent } from 'react'
-import { threshold, duotone, halftone, dither, grain, hexToRgb, type FilterId } from './lib/filters'
+import { FILTERS, FILTER_ORDER, defaultParams, type FilterId, type Params, type ParamValue } from './lib/filters'
 import { searchFreeImages, type KbImage } from './lib/kb'
 
 const INK = '#141414'
@@ -14,23 +14,11 @@ const IMG_BASE = 200
 type Base = { id: string; x: number; y: number; scale: number; z: number }
 type ImgEl = Base & {
   kind: 'image'; src: KbImage; img: HTMLImageElement
-  filter: FilterId; level: number; shadow: string; highlight: string
-  cell: number; angle: number; levels: number; amount: number
+  filter: FilterId; params: Params
 }
 type TextEl = Base & { kind: 'text'; text: string; size: number; color: string }
 type El = ImgEl | TextEl
 type Page = { id: string; elements: El[] }
-
-const FILTER_ORDER: FilterId[] = ['none', 'xerox', 'duotone', 'halftone', 'dither', 'grain']
-const FILTER_LABEL: Record<FilterId, string> = { none: 'INGEN', xerox: 'XEROX', duotone: 'DUOTON', halftone: 'RASTER', dither: 'DITHER', grain: 'KORN' }
-const FILTER_INFO: Record<FilterId, string> = {
-  none: 'Ingen effekt — originalbilden som den ligger i KB:s arkiv.',
-  xerox: 'Tröskel gör varje pixel antingen svart eller vit, helt utan gråskala. Precis så fungerade fotokopiatorn och tidiga faxar, och det blev fanzinekulturens hårda, korniga signatur.',
-  duotone: 'Duoton byter ut gråskalan mot två färger, en för skuggorna och en för högdagrarna. Det härmar risografen och tidigt screentryck, där varje färg trycktes som ett eget lager, ofta i grälla kombinationer.',
-  halftone: 'Rastret bygger upp bilden av prickar, stora där det är mörkt och små där det är ljust. Tekniken uppfanns på 1880-talet för att kunna trycka fotografier i tidningar. Håll en gammal tidningsbild nära ögat så ser du prickarna.',
-  dither: 'Dithering strör ut prickar i mönster och lurar ögat att se fler toner än det egentligen finns. Det användes flitigt på tidiga svartvita datorskärmar och i den tidiga webbens 256-färgsbilder.',
-  grain: 'Korn lägger på slumpmässigt brus, som filmkornet i analog film eller suset på en sliten kopia. Lite korn får en ren digital bild att kännas äldre, taktil och hemmagjord.',
-}
 
 let counter = 0
 const uid = () => 'e' + ++counter
@@ -42,10 +30,11 @@ const DECADES = [1600, 1700, 1800, 1850, 1880, 1900, 1920]
 const SURPRISE = ['Porträtt', 'Affischer', 'Kartor', 'Stockholm', 'Kunglig', 'Fågel', 'Stad', 'Fest', 'Kopparstick']
 const rnd = (n: number) => Math.floor(Math.random() * n)
 
-// Full upplösning för export, lägre för live-förhandsvisning. Förhandsvisningen
-// filtrerar bara så många pixlar som faktiskt syns på skärmen (visad storlek ×
-// devicePixelRatio, upp till PREVIEW_MAX) så Retina blir skarp utan att frysa
-// UI:t vid drag.
+// Referensupplösning som filter (särskilt rastrets cell) är "författade" mot.
+// Exporten renderas i EXPORT_SCALE× detta för skarp, delbar/utskriftsduglig
+// upplösning (≈237 dpi på A5). Förhandsvisningen filtrerar bara så många
+// pixlar som faktiskt syns på skärmen (visad storlek × devicePixelRatio,
+// upp till PREVIEW_MAX) så Retina blir skarp utan att frysa UI:t vid drag.
 const EXPORT_CAP = 700
 const EXPORT_SCALE = 3
 const PREVIEW_MAX = 800
@@ -66,20 +55,14 @@ function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(el.img, 0, 0, w, h)
-  if (el.filter === 'none') return c
+  const def = FILTERS[el.filter]
+  if (!def || el.filter === 'none') return c
+  // ratio skalar pixel-dimensionerade reglage (raster-cell, gravyrlinjer,
+  // kornstorlek …) mot exportupplösningen, så effekten ser likadan ut i
+  // förhandsvisning och export.
+  const ratio = Math.min(maxDim, cap) / Math.min(maxDim, EXPORT_CAP)
   const base = ctx.getImageData(0, 0, w, h)
-  let out: ImageData
-  if (el.filter === 'xerox') out = threshold(base, el.level)
-  else if (el.filter === 'duotone') out = duotone(base, hexToRgb(el.shadow), hexToRgb(el.highlight))
-  else if (el.filter === 'halftone') {
-    // Prickstorleken är i pixlar, så den måste skalas mot exportupplösningen,
-    // annars ser rastret olika ut i förhandsvisning och export.
-    const ratio = Math.min(maxDim, cap) / Math.min(maxDim, EXPORT_CAP)
-    out = halftone(base, Math.max(3, Math.round(el.cell * ratio)), el.angle)
-  }
-  else if (el.filter === 'dither') out = dither(base, el.levels)
-  else out = grain(base, el.amount)
-  ctx.putImageData(out, 0, 0)
+  ctx.putImageData(def.apply(base, el.params, ratio), 0, 0)
   return c
 }
 
@@ -138,13 +121,24 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 function serialize(pages: Page[]): string {
   return JSON.stringify({ v: 1, pages }, (k, v) => (k === 'img' ? undefined : v))
 }
+// Gamla sparade ziner/delade länkar la filterreglagen platt på elementet
+// (level, shadow, cell …). De nyckelnamnen matchar de nya param-nycklarna, så
+// vi slår ihop dem (eller ett färdigt params-objekt) ovanpå defaults — nyare
+// reglage får då sina standardvärden och inget går sönder.
+const OLD_PARAM_KEYS = ['level', 'shadow', 'highlight', 'cell', 'angle', 'levels', 'amount']
+function migrateParams(e: Record<string, unknown>): Params {
+  const p = defaultParams()
+  if (e.params && typeof e.params === 'object') Object.assign(p, e.params)
+  else for (const k of OLD_PARAM_KEYS) if (e[k] !== undefined) p[k] = e[k] as ParamValue
+  return p
+}
 async function deserialize(json: string): Promise<Page[]> {
   const doc = JSON.parse(json)
   const pages: Page[] = []
   for (const pg of doc.pages ?? []) {
     const els: El[] = []
     for (const e of pg.elements ?? []) {
-      if (e.kind === 'image') { const img = await loadImage(e.src.fullImage); els.push({ ...e, id: uid(), img }) }
+      if (e.kind === 'image') { const img = await loadImage(e.src.fullImage); els.push({ ...e, id: uid(), img, params: migrateParams(e) }) }
       else els.push({ ...e, id: uid() })
     }
     pages.push({ id: uid(), elements: els })
@@ -173,7 +167,9 @@ function ImageNode({ el }: { el: ImgEl }) {
       c.getContext('2d')!.drawImage(fc, 0, 0)
     })
     return () => cancelAnimationFrame(raf)
-  }, [el.img, el.scale, el.filter, el.level, el.shadow, el.highlight, el.cell, el.angle, el.levels, el.amount])
+    // el.params byts ut till ett nytt objekt vid varje reglageändring, så
+    // referensjämförelsen räcker för att rendera om.
+  }, [el.img, el.scale, el.filter, el.params])
   return <canvas ref={ref} aria-hidden="true" style={{ width: el.scale * IMG_BASE, height: 'auto', display: 'block', pointerEvents: 'none' }} />
 }
 
@@ -247,6 +243,53 @@ function MyZines({ pages, onLoad, onClose, say }: { pages: Page[]; onLoad: (p: P
         <button ref={closeRef} onClick={onClose} className="disp" style={{ marginTop: 18, background: INK, color: PAPER, border: 'none', padding: '10px 18px', fontSize: 15 }}>Stäng</button>
       </div>
     </div>
+  )
+}
+
+// Renderar ett filters reglage utifrån registret (FILTERS[filter].controls).
+// Ett nytt filter får sina reglage här gratis. Info-rutan visar filtrets trivia
+// plus, för select-reglage, den valda variantens egen lilla faktarad.
+const ctrlLabel = { fontSize: 12 } as const
+const inputRow = { width: '100%', display: 'block', marginTop: 6 } as const
+function FilterPanel({ el, setParam }: { el: ImgEl; setParam: (id: string, key: string, value: ParamValue) => void }) {
+  const def = FILTERS[el.filter]
+  const optionInfos: string[] = []
+  for (const c of def.controls) {
+    if (c.kind === 'select') {
+      const opt = c.options.find((o) => o.value === String(el.params[c.key]))
+      if (opt?.info) optionInfos.push(opt.info)
+    }
+  }
+  return (
+    <>
+      {def.controls.map((c) => {
+        if (c.kind === 'color') {
+          return (
+            <label key={c.key} className="mono" style={ctrlLabel}>{c.label}
+              <input type="color" value={String(el.params[c.key])} onChange={(e) => setParam(el.id, c.key, e.target.value)} style={{ display: 'block', marginTop: 6 }} />
+            </label>
+          )
+        }
+        if (c.kind === 'select') {
+          return (
+            <label key={c.key} className="mono" style={ctrlLabel}>{c.label}
+              <select value={String(el.params[c.key])} onChange={(e) => setParam(el.id, c.key, e.target.value)} style={{ ...inputRow, border: '1.5px solid ' + INK, background: '#fff', padding: '4px 6px', fontSize: 12 }}>
+                {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          )
+        }
+        return (
+          <label key={c.key} className="mono" style={ctrlLabel}>{c.label}: {Number(el.params[c.key])}{c.suffix ?? ''}
+            <input type="range" min={c.min} max={c.max} step={c.step ?? 1} value={Number(el.params[c.key])} onChange={(e) => setParam(el.id, c.key, Number(e.target.value))} style={inputRow} />
+          </label>
+        )
+      })}
+      <div className="mono" style={{ fontSize: 11, lineHeight: 1.6, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + ACID, padding: '9px 11px', color: INK }}>
+        {def.info}
+        {optionInfos.map((t, i) => <div key={i} style={{ marginTop: 6 }}>{t}</div>)}
+      </div>
+    </>
   )
 }
 
@@ -347,7 +390,7 @@ export default function App() {
     }
     img.onload = () => {
       const id = uid()
-      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'xerox', level: 128, shadow: '#141414', highlight: '#ff4fa0', cell: 6, angle: 0, levels: 2, amount: 30 }])
+      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), filter: 'xerox', params: defaultParams() }])
       setSelected(id); say('Lade till bild: ' + a.title)
     }
     img.src = a.fullImage
@@ -359,7 +402,8 @@ export default function App() {
   }
   const remove = (id: string) => { setElements((els) => els.filter((e) => e.id !== id)); setSelected(null); say('Tog bort objekt') }
   const toFront = (id: string) => update(id, (e) => ({ ...e, z: nextZ(elements) }))
-  const setFilter = (id: string, f: FilterId) => { updImg(id, (e) => ({ ...e, filter: f })); say('Filter: ' + FILTER_LABEL[f]) }
+  const setFilter = (id: string, f: FilterId) => { updImg(id, (e) => ({ ...e, filter: f })); say('Filter: ' + FILTERS[f].label) }
+  const setParam = (id: string, key: string, value: ParamValue) => updImg(id, (e) => ({ ...e, params: { ...e.params, [key]: value } }))
 
   const onElPointerDown = (e: PointerEvent<HTMLDivElement>, id: string) => {
     e.stopPropagation(); setSelected(id)
@@ -427,7 +471,7 @@ export default function App() {
             <button className="tool" onClick={addText}>+ TEXT</button>
             <button className="tool" onClick={() => setAboutOpen(true)}>OM</button>
             <button className="tool" onClick={() => setZinesOpen(true)}>ZINES</button>
-            <button className="tool" onClick={exportPng}>PNG</button>
+            <button className="tool" onClick={() => void exportPng()}>PNG</button>
             <button onClick={() => void exportZinePdf()} className="disp" style={{ background: ACID, color: INK, border: '2px solid ' + INK, fontSize: 14, padding: '9px 14px' }}>ZINE PDF</button>
           </div>
         </div>
@@ -526,47 +570,17 @@ export default function App() {
               {sel.kind === 'image' && (
                 <>
                   <div>
-                    <div className="mono" style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>FILTER</div>
+                    <div className="mono" style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>FILTER · tidslinje genom bildhistorien</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {FILTER_ORDER.map((f) => (
-                        <button key={f} className="chip" aria-pressed={sel.filter === f} onClick={() => setFilter(sel.id, f)}>{FILTER_LABEL[f]}</button>
+                        <button key={f} className="chip" aria-pressed={sel.filter === f} onClick={() => setFilter(sel.id, f)}>
+                          {FILTERS[f].label}{FILTERS[f].era && <span style={{ opacity: 0.55, marginLeft: 4, fontSize: 9 }}>{FILTERS[f].era}</span>}
+                        </button>
                       ))}
                     </div>
                   </div>
 
-                  {sel.filter === 'xerox' && (
-                    <label className="mono" style={labelStyle}>Tröskel: {sel.level}
-                      <input type="range" min={0} max={255} value={sel.level} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, level: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
-                    </label>
-                  )}
-                  {sel.filter === 'duotone' && (
-                    <div style={{ display: 'flex', gap: 16 }}>
-                      <label className="mono" style={labelStyle}>Skugga<input type="color" value={sel.shadow} onChange={(e) => { const v = e.target.value; updImg(sel.id, (el) => ({ ...el, shadow: v })) }} style={{ display: 'block', marginTop: 6 }} /></label>
-                      <label className="mono" style={labelStyle}>Högdager<input type="color" value={sel.highlight} onChange={(e) => { const v = e.target.value; updImg(sel.id, (el) => ({ ...el, highlight: v })) }} style={{ display: 'block', marginTop: 6 }} /></label>
-                    </div>
-                  )}
-                  {sel.filter === 'halftone' && (
-                    <>
-                      <label className="mono" style={labelStyle}>Prickstorlek: {sel.cell}
-                        <input type="range" min={3} max={16} value={sel.cell} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, cell: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
-                      </label>
-                      <label className="mono" style={labelStyle}>Vinkel: {sel.angle}°
-                        <input type="range" min={0} max={90} value={sel.angle} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, angle: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
-                      </label>
-                    </>
-                  )}
-                  {sel.filter === 'dither' && (
-                    <label className="mono" style={labelStyle}>Nivåer: {sel.levels}
-                      <input type="range" min={2} max={6} value={sel.levels} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, levels: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
-                    </label>
-                  )}
-                  {sel.filter === 'grain' && (
-                    <label className="mono" style={labelStyle}>Mängd: {sel.amount}
-                      <input type="range" min={0} max={100} value={sel.amount} onChange={(e) => { const v = Number(e.target.value); updImg(sel.id, (el) => ({ ...el, amount: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
-                    </label>
-                  )}
-
-                  <div className="mono" style={{ fontSize: 11, lineHeight: 1.6, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + ACID, padding: '9px 11px', color: INK }}>{FILTER_INFO[sel.filter]}</div>
+                  <FilterPanel el={sel} setParam={setParam} />
 
                   <label className="mono" style={labelStyle}>Storlek: {Math.round(sel.scale * 100)}%
                     <input type="range" min={0.2} max={2.5} step={0.05} value={sel.scale} onChange={(e) => { const v = Number(e.target.value); update(sel.id, (el) => ({ ...el, scale: v })) }} style={{ width: '100%', display: 'block', marginTop: 6 }} />
