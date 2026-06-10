@@ -47,6 +47,7 @@ const rnd = (n: number) => Math.floor(Math.random() * n)
 // devicePixelRatio, upp till PREVIEW_MAX) så Retina blir skarp utan att frysa
 // UI:t vid drag.
 const EXPORT_CAP = 700
+const EXPORT_SCALE = 3
 const PREVIEW_MAX = 800
 
 function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
@@ -82,14 +83,21 @@ function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
   return c
 }
 
-function renderPage(els: El[]): HTMLCanvasElement {
+// scale > 1 renderar sidan i högre upplösning (export). ctx.scale låter all
+// ritlogik stanna i logiska 460×651-koordinater; bara bitmappen blir större.
+function renderPage(els: El[], scale = 1): HTMLCanvasElement {
   const c = document.createElement('canvas')
-  c.width = PAGE_W; c.height = PAGE_H
+  c.width = PAGE_W * scale; c.height = PAGE_H * scale
   const ctx = c.getContext('2d')!
+  ctx.scale(scale, scale)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.fillStyle = '#F6F3EA'; ctx.fillRect(0, 0, PAGE_W, PAGE_H)
   for (const el of [...els].sort((a, b) => a.z - b.z)) {
     if (el.kind === 'image') {
-      const fc = filteredCanvas(el)
+      // Källbitmappen måste ha pixlar nog för exportskalan, annars skalas en
+      // 700px-canvas upp och blir suddig igen.
+      const fc = filteredCanvas(el, EXPORT_CAP * scale)
       const w = el.scale * IMG_BASE
       ctx.drawImage(fc, el.x, el.y, w, w * (fc.height / fc.width))
     } else {
@@ -381,7 +389,7 @@ export default function App() {
   }
 
   const exportPng = () => {
-    const c = renderPage(elements)
+    const c = renderPage(elements, EXPORT_SCALE)
     const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'klippverket-sida.png'; a.click()
     say('Exporterade sidan som PNG med kreditering')
   }
@@ -391,7 +399,7 @@ export default function App() {
     const pw = 419.53, ph = 595.28
     pages.forEach((pg, i) => {
       if (i > 0) pdf.addPage('a5', 'portrait')
-      pdf.addImage(renderPage(pg.elements).toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pw, ph)
+      pdf.addImage(renderPage(pg.elements, EXPORT_SCALE).toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pw, ph)
     })
     pdf.save('klippverket-zine.pdf')
     say('Exporterade zine som PDF: ' + pages.length + ' sidor')
