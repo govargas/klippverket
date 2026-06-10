@@ -362,6 +362,7 @@ export default function App() {
   const [error, setError] = useState(false)
   const [searched, setSearched] = useState(false)
   const [announce, setAnnounce] = useState('')
+  const [dropActive, setDropActive] = useState(false) // desktop: bild dras över arket
   const [aboutOpen, setAboutOpen] = useState(false)
   const [zinesOpen, setZinesOpen] = useState(false)
   const [frameW, setFrameW] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1024))
@@ -435,7 +436,9 @@ export default function App() {
   const update = (id: string, fn: (el: El) => El) => setElements((els) => els.map((e) => (e.id === id ? fn(e) : e)))
   const updImg = (id: string, fn: (el: ImgEl) => ImgEl) => update(id, (e) => (e.kind === 'image' ? fn(e) : e))
 
-  const addImage = (a: KbImage) => {
+  // at = valfri släpp-position i artboard-koordinater (desktop drag-and-drop).
+  // Utan position landar bilden uppe till vänster, som vid klick/tryck.
+  const addImage = (a: KbImage, at?: { x: number; y: number }) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     let triedThumb = false
@@ -447,7 +450,9 @@ export default function App() {
     }
     img.onload = () => {
       const id = uid()
-      setElements((els) => [...els, { id, kind: 'image', src: a, img, x: 50, y: 60, scale: 1, z: nextZ(els), layers: [{ filter: 'none', params: defaultParams() }] }])
+      const x = at ? clamp(at.x, 0, PAGE_W - 40) : 50
+      const y = at ? clamp(at.y, 0, PAGE_H - 40) : 60
+      setElements((els) => [...els, { id, kind: 'image', src: a, img, x, y, scale: 1, z: nextZ(els), layers: [{ filter: 'none', params: defaultParams() }] }])
       setSelected(id); say('Lade till bild: ' + a.title)
     }
     img.src = a.fullImage
@@ -571,7 +576,10 @@ export default function App() {
         {!loading && !error && (
           <div style={{ display: 'flex', gap: 8, overflow: 'auto', paddingBottom: 4 }}>
             {results.slice(0, 18).map((a) => (
-              <button key={a.id} className="shelf-thumb" onClick={() => addImage(a)} title={a.title} aria-label={'Lägg in ' + a.title} style={{ flex: 'none', width: 76, padding: 0, border: '2px solid ' + INK, background: '#fff', cursor: 'pointer' }}>
+              <button key={a.id} className="shelf-thumb" onClick={() => addImage(a)}
+                draggable
+                onDragStart={(e) => { e.dataTransfer.setData('text/kb-id', a.id); e.dataTransfer.effectAllowed = 'copy' }}
+                title={a.title} aria-label={'Lägg in ' + a.title} style={{ flex: 'none', width: 76, padding: 0, border: '2px solid ' + INK, background: '#fff', cursor: 'pointer' }}>
                 <span style={{ display: 'block', aspectRatio: '3 / 4', overflow: 'hidden', background: '#e6e2d8' }}>
                   <img src={a.thumbnail} alt={a.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </span>
@@ -607,11 +615,23 @@ export default function App() {
               onPointerLeave={onPointerUp}
               onKeyDown={onKeyDown}
               onPointerDown={() => setSelected(null)}
+              // Desktop drag-and-drop: släpp en hyllbild på arket. Koordinaterna
+              // delas med scale eftersom arket ritas via transform: scale().
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!dropActive) setDropActive(true) }}
+              onDragLeave={() => setDropActive(false)}
+              onDrop={(e) => {
+                e.preventDefault(); setDropActive(false)
+                const id = e.dataTransfer.getData('text/kb-id'); if (!id) return
+                const a = results.find((r) => r.id === id); if (!a) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                addImage(a, { x: (e.clientX - rect.left) / scale - IMG_BASE / 2, y: (e.clientY - rect.top) / scale - IMG_BASE / 2 })
+              }}
               tabIndex={0}
               role="group"
               aria-label="Zine-yta. Tabba till ett objekt för att markera, dra eller använd piltangenter för att flytta, plus och minus skalar, Delete tar bort."
               style={{ position: 'relative', width: PAGE_W, height: PAGE_H, transform: 'scale(' + scale + ')', transformOrigin: 'top left', background: '#F6F3EA', border: '2px solid ' + INK, overflow: 'hidden', touchAction: 'none' }}
             >
+              {dropActive && <div aria-hidden="true" style={{ position: 'absolute', inset: 6, border: '3px dashed ' + PINK, background: 'rgba(216,255,62,.12)', pointerEvents: 'none', zIndex: 999 }} />}
               {sorted.map((el) => (
                 <div
                   key={el.id}
@@ -628,7 +648,7 @@ export default function App() {
                     : <span style={{ fontFamily: (FONTS[el.font] ?? FONTS.anton).family, fontWeight: (FONTS[el.font] ?? FONTS.anton).weight, fontSize: el.size, color: el.color, whiteSpace: 'pre', userSelect: 'none', lineHeight: 0.92, letterSpacing: (FONTS[el.font] ?? FONTS.anton).upper ? '.4px' : 0, textTransform: (FONTS[el.font] ?? FONTS.anton).upper ? 'uppercase' : 'none' }}>{el.text}</span>}
                 </div>
               ))}
-              {elements.length === 0 && <div className="mono" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED, fontSize: 12, textAlign: 'center', padding: 20 }}>Sök och klicka en KB-bild för att börja klippa.</div>}
+              {elements.length === 0 && <div className="mono" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED, fontSize: 12, textAlign: 'center', padding: 20 }}>Klicka en KB-bild — eller dra den hit — för att börja klippa.</div>}
             </div>
           </div>
           <p className="mono" style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>Tangentbord: Tab markerar · piltangenter flyttar (Shift = fin) · +/− skalar · Delete tar bort.</p>
