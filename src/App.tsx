@@ -31,6 +31,10 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const THEMES = ['Porträtt', 'Affischer', 'Kartor', 'Kopparstick', 'Fartyg', 'Stockholm', 'Blommor', 'Ornament']
 const DECADES = [1600, 1700, 1800, 1850, 1880, 1900, 1920]
 const SURPRISE = ['Porträtt', 'Affischer', 'Kartor', 'Stockholm', 'Kunglig', 'Fågel', 'Stad', 'Fest', 'Kopparstick']
+// Hur många träffar vi hämtar per sökning. KB klarar minst 100/anrop; 60 ger
+// rika teman (Stockholm har 25k+) en bred hylla utan att dränka i bilder.
+// Hela det hämtade urvalet visas — ingen klippning i renderingen.
+const KB_LIMIT = 60
 const rnd = (n: number) => Math.floor(Math.random() * n)
 
 // Referensupplösning som filter (särskilt rastrets cell) är "författade" mot.
@@ -390,7 +394,7 @@ export default function App() {
   const runSearch = async (q: string, opts: { from?: string; to?: string; offset?: number } = {}, label?: string) => {
     setLoading(true); setError(false)
     try {
-      const { images, total } = await searchFreeImages(q || 'Stockholm', 24, opts)
+      const { images, total } = await searchFreeImages(q || 'Stockholm', KB_LIMIT, opts)
       setResults(images); setSearched(true)
       say(label ?? (images.length
         ? images.length + ' fria träffar från KB'
@@ -431,8 +435,8 @@ export default function App() {
     setQuery(term); setActiveTheme(null); setActiveEpoch(null); setOpenMenu(null)
     setLoading(true); setError(false)
     try {
-      let r = await searchFreeImages(term, 24, { offset: rnd(60) })
-      if (r.images.length === 0) r = await searchFreeImages(term, 24)
+      let r = await searchFreeImages(term, KB_LIMIT, { offset: rnd(60) })
+      if (r.images.length === 0) r = await searchFreeImages(term, KB_LIMIT)
       setResults(r.images); setSearched(true)
       say(r.images.length ? 'Överraskning: ' + term : 'Inga fria träffar för ' + term + ', prova igen')
     } catch {
@@ -639,7 +643,7 @@ export default function App() {
         )}
         {!loading && !error && (
           <div style={{ display: 'flex', gap: 8, overflow: 'auto', paddingBottom: 4 }}>
-            {results.slice(0, 18).map((a) => (
+            {results.map((a) => (
               <button key={a.id} className="shelf-thumb" onClick={() => addImage(a)}
                 draggable
                 onDragStart={(e) => { e.dataTransfer.setData('text/kb-id', a.id); e.dataTransfer.effectAllowed = 'copy' }}
