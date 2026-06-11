@@ -10,7 +10,7 @@ Klippverket lets users search KB's open cultural heritage data, place free-to-us
 
 ## Status — komplett verkstad (fas 1–5)
 
-**Landningssida** (`src/sections.tsx`): sticky nav, hero med levande KB-collage, manifest, markis, steg-för-steg, horisontell filter-tidslinje, typografi-specimen, galleri och avslutande CTA. Scroll-reveal via CSS (`animation-timeline: view()`), inget JS som kan lämna innehåll osynligt.
+**Landningssida** (`src/sections.tsx`): sticky nav, hero med levande KB-collage, manifest, markis, steg-för-steg, horisontell filter-tidslinje, typografi-specimen, galleri och avslutande CTA. Inträdesrörelse i ren CSS (tidsbaserad `@keyframes`, inte scrolldriven) som respekterar `prefers-reduced-motion`, så inget JS kan lämna innehåll osynligt.
 
 **Verkstaden** (`src/App.tsx`):
 - A5-editor med flera bilder + rubriktext per sida: dra för att flytta, skala, per-bild-filter (upp till två lager), redigera text, ta bort, lagerordning.
