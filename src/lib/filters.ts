@@ -28,7 +28,7 @@ export function hexToRgb(hex: string): RGB {
 }
 
 // Läs en param som tal/sträng med fallback (filter får aldrig krascha på en
-// saknad nyckel — gamla sparade ziner kanske inte har den).
+// saknad nyckel - gamla sparade ziner kanske inte har den).
 const num = (p: Params, k: string, d: number) => (typeof p[k] === 'number' ? (p[k] as number) : d)
 const str = (p: Params, k: string, d: string) => (typeof p[k] === 'string' ? (p[k] as string) : d)
 
@@ -86,7 +86,7 @@ export function duotone(src: ImageData, p: Params): ImageData {
   const s = src.data, o = out.data
   for (let i = 0; i < s.length; i += 4) {
     const t = Math.pow(luma(s[i], s[i + 1], s[i + 2]) / 255, gamma)
-    // piecewise: skugga→mellan (0–0.5), mellan→högdager (0.5–1)
+    // piecewise: skugga→mellan (0-0.5), mellan→högdager (0.5-1)
     let r: number, g: number, b: number
     if (t < 0.5) { const u = t * 2; r = mix(shadow[0], mid[0], u); g = mix(shadow[1], mid[1], u); b = mix(shadow[2], mid[2], u) }
     else { const u = (t - 0.5) * 2; r = mix(mid[0], highlight[0], u); g = mix(mid[1], highlight[1], u); b = mix(mid[2], highlight[2], u) }
@@ -136,7 +136,7 @@ export function halftone(src: ImageData, p: Params, ratio = 1): ImageData {
 
 // CMYK-rosett: fyra halvtonsplåtar (cyan/magenta/gul/svart) i klassiska vinklar,
 // multiplicerade på varandra. misregister förskjuter plåtarna ur passning som i
-// en sliten tryckpress. Den dyraste effekten — fyra raster i ett.
+// en sliten tryckpress. Den dyraste effekten - fyra raster i ett.
 export function cmyk(src: ImageData, p: Params, ratio = 1): ImageData {
   const w = src.width, h = src.height
   const cell = Math.max(3, Math.round(num(p, 'cell', 5) * ratio))
@@ -302,7 +302,7 @@ export function cyanotype(src: ImageData, p: Params): ImageData {
   return out
 }
 
-// Sepia/albumin (1850–1900): brunt fototpapper. tone värmer/kyler, fade lyfter
+// Sepia/albumin (1850-1900): brunt fototpapper. tone värmer/kyler, fade lyfter
 // svärtan (blekt arkiv), vignette mörknar kanterna.
 export function sepia(src: ImageData, p: Params): ImageData {
   const tone = num(p, 'tone', 0) / 100        // -0.5..0.5
@@ -328,7 +328,7 @@ export function sepia(src: ImageData, p: Params): ImageData {
   return out
 }
 
-// Gravyrlinjer (1600–1800-tal): skraffering. Parallella linjer vars bredd växer
+// Gravyrlinjer (1600-1800-tal): skraffering. Parallella linjer vars bredd växer
 // i skuggorna, som kopparstickets och sedelgravyrens linjer. density = avstånd.
 export function engrave(src: ImageData, p: Params, ratio = 1): ImageData {
   const spacing = Math.max(2, Math.round(num(p, 'density', 6) * ratio))
@@ -408,13 +408,13 @@ export type FilterDef = {
 export const FILTERS: Record<FilterId, FilterDef> = {
   none: {
     id: 'none', label: 'INGEN', era: '',
-    info: 'Ingen effekt — originalbilden som den ligger i KB:s arkiv.',
+    info: 'Ingen effekt - originalbilden som den ligger i KB:s arkiv.',
     controls: [],
     apply: (s) => s,
   },
   engrave: {
     id: 'engrave', label: 'GRAVYR', era: '1600-tal',
-    info: 'Skraffering: parallella linjer som blir tjockare i skuggorna. Så byggde kopparstickare och sedelgravörer upp ton långt före fotografiet — för hand, linje för linje.',
+    info: 'Skraffering: parallella linjer som blir tjockare i skuggorna. Så byggde kopparstickare och sedelgravörer upp ton långt före fotografiet - för hand, linje för linje.',
     controls: [
       { kind: 'range', key: 'density', label: 'Linjeavstånd', min: 2, max: 14, def: 6 },
       { kind: 'range', key: 'angle', label: 'Vinkel', min: 0, max: 180, def: 45, suffix: '°' },
@@ -432,7 +432,7 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   sepia: {
     id: 'sepia', label: 'SEPIA', era: '1850',
-    info: 'Albuminpapperets bruna ton, byggt på äggvita. Mycket av KB:s 1800-talsmaterial är just sådana foton — blekta, varma, lite vignetterade i kanten.',
+    info: 'Albuminpapperets bruna ton, byggt på äggvita. Mycket av KB:s 1800-talsmaterial är just sådana foton - blekta, varma, lite vignetterade i kanten.',
     controls: [
       { kind: 'range', key: 'tone', label: 'Ton', min: -50, max: 50, def: 0 },
       { kind: 'range', key: 'fade', label: 'Blekning', min: 0, max: 60, def: 0 },
@@ -474,7 +474,7 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   posterize: {
     id: 'posterize', label: 'POSTER', era: '1960-tal',
-    info: 'Reducera bilden till några få platta färgfält. Greppet bakom 60-talets psykedeliska affischer och Warhols screentryck — färgen blir grafisk och plakatmässig.',
+    info: 'Reducera bilden till några få platta färgfält. Greppet bakom 60-talets psykedeliska affischer och Warhols screentryck - färgen blir grafisk och plakatmässig.',
     controls: [
       { kind: 'range', key: 'levels', label: 'Nivåer', min: 2, max: 8, def: 4 },
     ],
@@ -482,7 +482,7 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   xerox: {
     id: 'xerox', label: 'XEROX', era: '1970-tal',
-    info: 'Tröskel gör varje pixel svart eller vit, helt utan gråskala. Precis så fungerade fotokopiatorn — fanzinekulturens hårda, korniga signatur. Höj "generation" för kopia-av-kopia-förfall.',
+    info: 'Tröskel gör varje pixel svart eller vit, helt utan gråskala. Precis så fungerade fotokopiatorn - fanzinekulturens hårda, korniga signatur. Höj "generation" för kopia-av-kopia-förfall.',
     controls: [
       { kind: 'range', key: 'level', label: 'Tröskel', min: 0, max: 255, def: 128 },
       { kind: 'range', key: 'contrast', label: 'Kontrast', min: -100, max: 100, def: 0 },
@@ -498,14 +498,14 @@ export const FILTERS: Record<FilterId, FilterDef> = {
     info: 'Dithering strör ut prickar i mönster och lurar ögat att se fler toner än det finns. Hjärtat i tidiga svartvita skärmar, GIF-bilder och dagens pixel-trend.',
     controls: [
       { kind: 'select', key: 'algo', label: 'Algoritm', def: 'floyd', options: [
-        { value: 'floyd', label: 'Floyd–Steinberg', info: 'Floyd–Steinberg (1976): standarden. Sprider felet till fyra grannar — GIF-erans arbetshäst.' },
+        { value: 'floyd', label: 'Floyd-Steinberg', info: 'Floyd-Steinberg (1976): standarden. Sprider felet till fyra grannar - GIF-erans arbetshäst.' },
         { value: 'atkinson', label: 'Atkinson', info: 'Atkinson (1984): Bill Atkinson på Apple, looken i tidiga Macintosh och HyperCard. Behåller bara en del av felet, vilket ger ljusare, renare bilder.' },
-        { value: 'jarvis', label: 'Jarvis–Judice–Ninke', info: 'Jarvis–Judice–Ninke (1976): sprider felet till tolv grannar — mjukare och mer detaljerat än Floyd–Steinberg, men långsammare.' },
+        { value: 'jarvis', label: 'Jarvis-Judice-Ninke', info: 'Jarvis-Judice-Ninke (1976): sprider felet till tolv grannar - mjukare och mer detaljerat än Floyd-Steinberg, men långsammare.' },
         { value: 'stucki', label: 'Stucki', info: 'Stucki (1981): en snabbare, skarpare variant av Jarvis med ren tonövergång.' },
         { value: 'sierra', label: 'Sierra', info: 'Sierra (1989): Frankie Sierras familj av kärnor som balanserar skärpa och hastighet.' },
-        { value: 'burkes', label: 'Burkes', info: 'Burkes (1988): en förenkling av Stucki — färre grannar, snabbare, lite grövre.' },
+        { value: 'burkes', label: 'Burkes', info: 'Burkes (1988): en förenkling av Stucki - färre grannar, snabbare, lite grövre.' },
         { value: 'bayer4', label: 'Bayer 4×4', info: 'Ordnad dithering (Bayer, 1973): ett fast korsstygnsmönster i stället för slumpspridning. Looken hos tidiga skrivare och Game Boy.' },
-        { value: 'bayer8', label: 'Bayer 8×8', info: 'Ordnad dithering (Bayer, 1973), finare 8×8-matris — tätare regelbundet mönster, mjukare toner.' },
+        { value: 'bayer8', label: 'Bayer 8×8', info: 'Ordnad dithering (Bayer, 1973), finare 8×8-matris - tätare regelbundet mönster, mjukare toner.' },
       ] },
       { kind: 'range', key: 'levels', label: 'Nivåer', min: 2, max: 6, def: 2 },
       { kind: 'range', key: 'pixel', label: 'Pixelstorlek', min: 1, max: 8, def: 1 },
@@ -515,7 +515,7 @@ export const FILTERS: Record<FilterId, FilterDef> = {
   },
   duotone: {
     id: 'duotone', label: 'DUOTON', era: '1980-tal',
-    info: 'Byter gråskalan mot färger: en för skuggorna, en för högdagrarna, en mittemellan. Härmar risografen och screentrycket, där varje färg trycktes som ett eget lager — ofta i grälla kombinationer.',
+    info: 'Byter gråskalan mot färger: en för skuggorna, en för högdagrarna, en mittemellan. Härmar risografen och screentrycket, där varje färg trycktes som ett eget lager - ofta i grälla kombinationer.',
     controls: [
       { kind: 'color', key: 'shadow', label: 'Skugga', def: '#141414' },
       { kind: 'color', key: 'mid', label: 'Mellanton', def: '#7a4060' },

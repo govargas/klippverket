@@ -35,6 +35,9 @@ function kbImageProxy(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), kbImageProxy()],
   server: {
+    // Respektera PORT från omgivningen (preview-harnessen tilldelar en port);
+    // faller tillbaka till Vites standard annars.
+    port: process.env.PORT ? Number(process.env.PORT) : undefined,
     proxy: {
       '/api/kbsearch': {
         target: 'https://data.kb.se',

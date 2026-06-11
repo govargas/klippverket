@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, type PointerEvent, type KeyboardEvent } fr
 import { FILTERS, FILTER_ORDER, defaultParams, type FilterId, type Params, type ParamValue } from './lib/filters'
 import { FONTS, FONT_ORDER, displayText, fontSpec, ensureFontsLoaded, type FontId } from './lib/fonts'
 import { searchFreeImages, type KbImage } from './lib/kb'
+import {
+  SiteNav, Hero, Manifesto, SourceMarquee, HowItWorks,
+  FilterTimeline, FontTimeline, Gallery, ClosingCta, SiteFooter,
+} from './sections'
 
 const INK = '#141414'
 const PAPER = '#F2EFE6'
@@ -13,7 +17,7 @@ const PAGE_H = 651
 const IMG_BASE = 200
 
 type Base = { id: string; x: number; y: number; scale: number; z: number }
-// Ett bildobjekt bär en stapel av 1–2 filterlager som appliceras i ordning.
+// Ett bildobjekt bär en stapel av 1-2 filterlager som appliceras i ordning.
 type FilterLayer = { filter: FilterId; params: Params }
 type ImgEl = Base & {
   kind: 'image'; src: KbImage; img: HTMLImageElement
@@ -33,7 +37,7 @@ const DECADES = [1600, 1700, 1800, 1850, 1880, 1900, 1920]
 const SURPRISE = ['Porträtt', 'Affischer', 'Kartor', 'Stockholm', 'Kunglig', 'Fågel', 'Stad', 'Fest', 'Kopparstick']
 // Hur många träffar vi hämtar per sökning. KB klarar minst 100/anrop; 60 ger
 // rika teman (Stockholm har 25k+) en bred hylla utan att dränka i bilder.
-// Hela det hämtade urvalet visas — ingen klippning i renderingen.
+// Hela det hämtade urvalet visas - ingen klippning i renderingen.
 const KB_LIMIT = 60
 const rnd = (n: number) => Math.floor(Math.random() * n)
 
@@ -57,7 +61,7 @@ function filteredCanvas(el: ImgEl, cap = EXPORT_CAP): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = w; c.height = h
   const ctx = c.getContext('2d')!
-  // Hög interpoleringskvalitet vid nedskalningen — annars aliaseras detaljrika
+  // Hög interpoleringskvalitet vid nedskalningen - annars aliaseras detaljrika
   // kopparstick/kartor redan innan filtret körs och ser korniga ut.
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
@@ -136,7 +140,7 @@ function serialize(pages: Page[]): string {
 }
 // Gamla sparade ziner/delade länkar la filterreglagen platt på elementet
 // (level, shadow, cell …). De nyckelnamnen matchar de nya param-nycklarna, så
-// vi slår ihop dem (eller ett färdigt params-objekt) ovanpå defaults — nyare
+// vi slår ihop dem (eller ett färdigt params-objekt) ovanpå defaults - nyare
 // reglage får då sina standardvärden och inget går sönder.
 const OLD_PARAM_KEYS = ['level', 'shadow', 'highlight', 'cell', 'angle', 'levels', 'amount']
 function migrateParams(e: Record<string, unknown>): Params {
@@ -146,7 +150,7 @@ function migrateParams(e: Record<string, unknown>): Params {
   return p
 }
 // Bygg filterstapeln vid inläsning. Nyare ziner har redan layers[]; äldre hade
-// ett enda {filter, params} (eller platta filterfält) — de blir ett lager.
+// ett enda {filter, params} (eller platta filterfält) - de blir ett lager.
 function migrateLayers(e: Record<string, unknown>): FilterLayer[] {
   if (Array.isArray(e.layers) && e.layers.length) {
     return e.layers.map((L: { filter?: FilterId; params?: Params }) => ({
@@ -212,7 +216,7 @@ function About({ onClose }: { onClose: () => void }) {
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Teknik</h3>
         <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>React, TypeScript, Vite. Egen bildfilter-motor i canvas 2D. KB:s öppna sök-API via en liten bild-/sök-proxy (serverless) så bilderna kan bearbetas i canvas.</p>
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Tillgänglighet</h3>
-        <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>Responsiv från 320 px. Tangentbords- och pekstyrd yta, semantiska knappar, synligt fokus och skärmläsar-annonser. Automatisk axe-granskning utan anmärkningar (inkl. kontrast). På ytan: Tab markerar, piltangenter flyttar, +/− skalar, Delete tar bort. Medveten begränsning: själva bildkompositionen ritas i canvas och exponeras inte pixel för pixel för skärmläsare — varje objekt har istället en beskrivande etikett.</p>
+        <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>Responsiv från 320 px. Tangentbords- och pekstyrd yta, semantiska knappar, synligt fokus och skärmläsar-annonser. Automatisk axe-granskning utan anmärkningar (inkl. kontrast). På ytan: Tab markerar, piltangenter flyttar, +/− skalar, Delete tar bort. Medveten begränsning: själva bildkompositionen ritas i canvas och exponeras inte pixel för pixel för skärmläsare - varje objekt har istället en beskrivande etikett.</p>
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Källa &amp; licens</h3>
         <p className="mono" style={{ fontSize: 12, lineHeight: 1.7 }}>Allt material kommer från KB Digitalt, Kungliga bibliotekets söktjänst för digitaliserat kulturarv: bilder, kartor, affischer, vykort, porträtt, handskrifter och mycket mer. Det mesta är fritt att använda eftersom upphovsrätten har upphört. Klippverket hämtar det via KB:s öppna sök-API (data.kb.se) och visar i första hand det som är fritt eller public domain där metadatan tillåter det. Materialet är kurerat och mest historiskt, så moderna ord ger ofta inga träffar, men det historiska djupet är också det som ger den råa, tidlösa känslan. Källan bäddas in i varje export.</p>
         <h3 className="disp" style={{ fontSize: 16, marginTop: 16 }}>Koncept och utveckling</h3>
@@ -341,7 +345,7 @@ function LayerEditor({ layer, index, removable, onFilter, onParam, onRemove }: {
   )
 }
 
-// Numrerad zonrubrik — speglar välkomststegen och delar appen i två tydliga
+// Numrerad zonrubrik - speglar välkomststegen och delar appen i två tydliga
 // faser: hitta material (Arkivet) och göra zinet (Verkstaden). Siffran i en
 // fylld ruta knyter an till logotypens kvadrat.
 function ZoneLabel({ n, title, sub }: { n: number; title: string; sub: string }) {
@@ -379,6 +383,12 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null)
   const propsRef = useRef<HTMLDivElement>(null)
   const say = (m: string) => setAnnounce(m)
+  // Scrolla ner till verkstaden från hero/nav/avslutande CTA. Hoppar direkt om
+  // användaren bett om reducerad rörelse.
+  const goWorkshop = () => {
+    const rm = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    document.getElementById('verkstad')?.scrollIntoView({ behavior: rm ? 'auto' : 'smooth', block: 'start' })
+  }
 
   const isRow = frameW >= 1024
   const scale = isRow ? 1 : clamp(frameW / PAGE_W, 0.35, 1)
@@ -512,7 +522,7 @@ export default function App() {
   const onElPointerDown = (e: PointerEvent<HTMLDivElement>, id: string) => {
     e.stopPropagation(); setSelected(id)
     // Fånga pekaren på elementet så drag följer fingret/musen även om det
-    // lämnar elementet — utan detta scrollar touch-enheter sidan istället.
+    // lämnar elementet - utan detta scrollar touch-enheter sidan istället.
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* äldre webbläsare */ }
     const el = elements.find((x) => x.id === id)
     if (el) drag.current = { id, ox: el.x, oy: el.y, sx: e.clientX, sy: e.clientY }
@@ -565,29 +575,38 @@ export default function App() {
   const labelStyle = { fontSize: 12 } as const
 
   return (
-    <div className="kv-shell" style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', border: '2px solid ' + INK }}>
+    <>
+      <div className="page-grain" aria-hidden="true" />
       <p aria-live="polite" className="sr-only">{announce}</p>
       {aboutOpen && <About onClose={() => setAboutOpen(false)} />}
       {zinesOpen && <MyZines pages={pages} onLoad={(p) => { setPages(p); setCurrent(0); setSelected(null) }} onClose={() => setZinesOpen(false)} say={say} />}
 
-      <header style={{ background: INK, color: PAPER, padding: '14px 18px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-          {/* Titel + navigering (OM, MINA ZINES) hålls ihop på samma rad/höjd —
-              även på mobil. Titeln skalas med clamp så den får plats bredvid
-              knapparna på de minsta skärmarna. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-            <span style={{ width: 14, height: 14, background: ACID, display: 'inline-block' }} aria-hidden="true" />
-            <h1 className="disp" style={{ fontSize: 'clamp(17px, 5.2vw, 22px)' }}>Klippverket</h1>
-            <button className="tool" onClick={() => setAboutOpen(true)}>OM</button>
-            <button className="tool" onClick={() => setZinesOpen(true)}>MINA ZINES</button>
+      <SiteNav onStart={goWorkshop} onAbout={() => setAboutOpen(true)} />
+      <Hero images={results} loading={loading} onStart={goWorkshop} onAbout={() => setAboutOpen(true)} />
+      <Manifesto />
+      <SourceMarquee />
+      <HowItWorks />
+      <FilterTimeline />
+      <FontTimeline />
+      <Gallery images={results} loading={loading} />
+
+      <section id="verkstad" className="kv-app bg-paper scroll-mt-[64px]">
+        {/* Verktygets egen rubrikrad: titel + export/sparat. Knyter ihop de två
+            zonerna (Arkivet, Verkstaden) som följer nedanför. */}
+        <div className="mx-auto flex max-w-[1400px] flex-col gap-4 border-b-2 border-ink px-[var(--space-gut)] pt-12 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="disp text-[length:var(--text-h2)] text-ink">Gör ditt zine</h2>
+            <p className="mono mt-3 max-w-[42ch] text-[13px] leading-relaxed text-ink/70">
+              Två steg: hitta material i Arkivet, komponera i Verkstaden. Källan bäddas in i exporten.
+            </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, flexWrap: 'wrap' }}>
-            <span className="mono" style={{ fontSize: 9, color: PAPER, opacity: 0.65, letterSpacing: 0.5, alignSelf: 'center' }}>EXPORTERA</span>
+          <div className="flex flex-wrap items-stretch gap-2">
+            <button className="chip self-center" onClick={() => setZinesOpen(true)}>MINA ZINES</button>
+            <span className="mono self-center text-[9px] uppercase tracking-wide text-ink/55">Exportera</span>
             <button className="export-btn" onClick={() => void exportPng()} aria-label="Exportera nuvarande sida som PNG">PNG<small>en sida</small></button>
             <button className="export-btn" onClick={() => void exportZinePdf()} aria-label="Exportera hela zinet som PDF">PDF<small>hela zinet</small></button>
           </div>
         </div>
-      </header>
 
       <section aria-label="Sök och bläddra i KB:s material" style={{ background: PAPER, padding: '10px 18px', borderBottom: '2px solid ' + INK }}>
         <div style={{ marginBottom: 10 }}><ZoneLabel n={1} title="Arkivet" sub="sök & välj ur KB:s öppna samlingar" /></div>
@@ -596,7 +615,7 @@ export default function App() {
           <button type="submit" className="disp" style={{ background: INK, color: PAPER, border: '2px solid ' + INK, padding: '0 16px', fontSize: 14 }}>SÖK</button>
         </form>
         {/* Tema och epok ligger i var sin dropdown i stället för två fulla
-            chip-rader — sparar skärmhöjd. Ett tema + en epok kan vara valda
+            chip-rader - sparar skärmhöjd. Ett tema + en epok kan vara valda
             samtidigt och kombineras till en sökning; valen visas som
             borttagbara pills. */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
@@ -638,7 +657,7 @@ export default function App() {
         {loading && <div className="mono" style={{ fontSize: 11, color: MUTED }}>Hämtar från KB…</div>}
         {!loading && error && (
           <div role="alert" className="mono" style={{ fontSize: 11, color: INK, background: '#fff', border: '1.5px solid ' + INK, borderLeft: '5px solid ' + PINK, padding: '9px 11px' }}>
-            KB:s API svarar inte just nu. Det är ett tillfälligt driftfel, inte ett tomt sökresultat — försök igen om en stund.
+            KB:s API svarar inte just nu. Det är ett tillfälligt driftfel, inte ett tomt sökresultat - försök igen om en stund.
           </div>
         )}
         {!loading && !error && (
@@ -664,7 +683,7 @@ export default function App() {
         <div className="kv-stagecol">
           {/* Knappraden binds till exakt arkets bredd (PAGE_W * scale) så
               "Sidor" ligger vid arkets vänstra hörn och "+ TEXT" vid det högra
-              på alla vyer — annars flyger +TEXT ut till skärmkanten på tablet
+              på alla vyer - annars flyger +TEXT ut till skärmkanten på tablet
               där kolumnen är bredare än A5-arket. */}
           <div style={{ width: PAGE_W * scale, maxWidth: '100%', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -720,7 +739,7 @@ export default function App() {
                     : <span style={{ fontFamily: (FONTS[el.font] ?? FONTS.anton).family, fontWeight: (FONTS[el.font] ?? FONTS.anton).weight, fontSize: el.size, color: el.color, whiteSpace: 'pre', userSelect: 'none', lineHeight: 0.92, letterSpacing: (FONTS[el.font] ?? FONTS.anton).upper ? '.4px' : 0, textTransform: (FONTS[el.font] ?? FONTS.anton).upper ? 'uppercase' : 'none' }}>{el.text}</span>}
                 </div>
               ))}
-              {elements.length === 0 && <div className="mono" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED, fontSize: 12, textAlign: 'center', padding: 20 }}>Klicka en KB-bild — eller dra den hit — för att börja klippa.</div>}
+              {elements.length === 0 && <div className="mono" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED, fontSize: 12, textAlign: 'center', padding: 20 }}>Klicka en KB-bild - eller dra den hit - för att börja klippa.</div>}
             </div>
           </div>
           <p className="mono" style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>Tangentbord: Tab markerar · piltangenter flyttar (Shift = fin) · +/− skalar · Delete tar bort.</p>
@@ -732,11 +751,11 @@ export default function App() {
               <div className="disp" style={{ fontSize: 20, marginBottom: 8 }}>Välkommen till Klippverket</div>
               <p style={{ marginTop: 0, marginBottom: 8 }}>Gör en egen zine av historiska bilder ur Kungliga bibliotekets (KB) öppna kulturarv, hämtade direkt via KB:s öppna API. Så här gör du:</p>
               <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <li>Sök i KB:s öppna material — eller tryck <strong>Överraska mig</strong>.</li>
+                <li>Sök i KB:s öppna material - eller tryck <strong>Överraska mig</strong>.</li>
                 <li>Klicka en bild för att lägga den på ytan.</li>
                 <li>Markera bilden och lägg på ett filter ur bildhistorien.</li>
                 <li>Lägg till rubrik med <strong>+ TEXT</strong> och välj typsnitt.</li>
-                <li>Exportera sidan som <strong>PNG</strong> — eller hela zinet som <strong>PDF</strong>.</li>
+                <li>Exportera sidan som <strong>PNG</strong> - eller hela zinet som <strong>PDF</strong>.</li>
               </ol>
               <p style={{ marginBottom: 0, marginTop: 8, color: MUTED }}>Allt material är fritt/public domain och källan bäddas in i exporten.</p>
             </div>
@@ -751,7 +770,7 @@ export default function App() {
               </div>
               {sel.kind === 'image' && (
                 <>
-                  <div className="mono" style={{ fontSize: 11, color: MUTED }}>Filter ur bildhistorien — stapla upp till två lager.</div>
+                  <div className="mono" style={{ fontSize: 11, color: MUTED }}>Filter ur bildhistorien - stapla upp till två lager.</div>
                   {sel.layers.map((layer, i) => (
                     <LayerEditor
                       key={i}
@@ -812,10 +831,10 @@ export default function App() {
         </aside>
         </div>
       </main>
+      </section>
 
-      <footer style={{ background: INK, color: '#a6a6a6', padding: '10px 18px' }} className="mono">
-        <span style={{ fontSize: 10 }}>KLIPPVERKET · GÖR SVERIGES FRIA KULTURARV TILL DITT · BYGGD MED KB:S ÖPPNA DATA</span>
-      </footer>
-    </div>
+      <ClosingCta onStart={goWorkshop} />
+      <SiteFooter />
+    </>
   )
 }

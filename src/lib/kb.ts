@@ -84,7 +84,7 @@ export async function searchFreeImages(q: string, limit = 24, opts: SearchOpts =
   const data: { hits?: Hit[]; total?: number } = await res.json()
   const withThumb = (data.hits ?? []).filter((h) => h.thumbnail)
   // Strikt: visa BARA material som metadatan markerar som fritt/public domain.
-  // Ingen fallback till ofritt — appen lovar fritt material och får inte
+  // Ingen fallback till ofritt - appen lovar fritt material och får inte
   // tvätta rättighetsskyddade verk till en export med KB-kreditering.
   const free = withThumb.filter((h) => isFree(h.usageAndAccessPolicy))
   return { images: free.map(toImage), total: data.total ?? withThumb.length }
